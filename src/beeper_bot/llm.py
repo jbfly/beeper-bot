@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from urllib import error, parse, request
 
 from .config import AppConfig
+from .people import PersonGraph, load_person_graph
 from .planning import QueryPlan
 from .retrieval import SearchCatalog, SearchResponse, SearchResult, collect_search_catalog, search_archive_multi
 
@@ -42,11 +43,11 @@ class AskResponse:
 
 
 class LlmClient(Protocol):
-    def answer_from_evidence(self, config: AppConfig, question: str, evidence: list[EvidenceItem]) -> str: ...
+    def answer_from_evidence(self, config: AppConfig, question: str, evidence: list[EvidenceItem], person_context: str = "") -> str: ...
 
 
 class QueryPlannerClient(Protocol):
-    def plan_query(self, config: AppConfig, question: str, catalog: SearchCatalog) -> QueryPlan: ...
+    def plan_query(self, config: AppConfig, question: str, catalog: SearchCatalog, graph: PersonGraph) -> QueryPlan: ...
 
 
 def _require_loopback_base_url(base_url: str) -> None:
@@ -91,18 +92,28 @@ class OpenAiCompatLlmClient:
         except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
             raise LlmError("LLM API returned an unexpected response") from exc
 
-    def answer_from_evidence(self, config: AppConfig, question: str, evidence: list[EvidenceItem]) -> str:
-        prompt = build_answer_prompt(question, evidence)
-        return self._post_chat(
+    def answer_from_evidence(self, config: AppConfig, question: str, evidence: list[EvidenceItem], person_context: str = "") -> str:
+        prompt = build_answer_prompt(question, evidence, person_context)
+        first = self._post_chat(
             config,
             [
                 {"role": "system", "content": "Answer only from provided evidence. No hidden reasoning."},
                 {"role": "user", "content": prompt},
             ],
         )
+        verify_prompt = build_verification_prompt(first, question, evidence, person_context)
+        verified = self._post_chat(
+            config,
+            [
+                {"role": "system", "content": "Verify answers against evidence. Return corrected answer only."},
+                {"role": "user", "content": verify_prompt},
+            ],
+            max_tokens=min(300, config.llm.max_output_tokens),
+        )
+        return verified or first
 
-    def plan_query(self, config: AppConfig, question: str, catalog: SearchCatalog) -> QueryPlan:
-        prompt = build_planner_prompt(question, catalog)
+    def plan_query(self, config: AppConfig, question: str, catalog: SearchCatalog, graph: PersonGraph) -> QueryPlan:
+        prompt = build_planner_prompt(question, catalog, graph)
         raw = self._post_chat(
             config,
             [
@@ -135,20 +146,27 @@ def build_evidence_packet(results: list[SearchResult], limit: int) -> list[Evide
     return evidence
 
 
-def build_planner_prompt(question: str, catalog: SearchCatalog) -> str:
+def build_planner_prompt(question: str, catalog: SearchCatalog, graph: PersonGraph) -> str:
     sender_block = ", ".join(catalog.sender_names[:60]) or "(none)"
     chat_block = ", ".join(catalog.chat_names[:60]) or "(none)"
+    person_lines: list[str] = []
+    for person in graph.people:
+        aliases = ", ".join(person.aliases) if person.aliases else "none"
+        chats = ", ".join(person.chat_ids) if person.chat_ids else "none"
+        person_lines.append(f"  {person.canonical_name} (aliases: {aliases}; chats: {chats})")
+    person_block = "\n".join(person_lines) if person_lines else "(none)"
     return (
         "Plan retrieval for a private local chat archive.\n"
         "Return one JSON object only. No markdown.\n"
         "Use these keys exactly: normalized_question, search_queries, people, chat_hints, preferred_senders, preferred_chats, answer_kind, time_hint.\n"
         "search_queries should contain 3 to 8 short search strings when possible.\n"
         "Expand nicknames, tense changes, synonyms, and likely paraphrases.\n"
-        "If the user mentions one person who appears in several chats, search broadly across those chats.\n"
+        "When a person is mentioned, set 'people' to their canonical names from the known people list below.\n"
         "answer_kind must be one of: fact, date, url, last-message, summary.\n"
         "time_hint must be one of: recent, any.\n\n"
-        f"Known sender names:\n{sender_block}\n\n"
-        f"Known chat names:\n{chat_block}\n\n"
+        f"Known people:\n{person_block}\n\n"
+        f"All sender names:\n{sender_block}\n\n"
+        f"All chat names:\n{chat_block}\n\n"
         f"User question:\n{question}\n"
     )
 
@@ -180,7 +198,7 @@ def parse_query_plan(raw: str, original_question: str) -> QueryPlan:
     )
 
 
-def fallback_query_plan(question: str, catalog: SearchCatalog) -> QueryPlan:
+def fallback_query_plan(question: str, catalog: SearchCatalog, graph: PersonGraph) -> QueryPlan:
     lowered = question.lower()
     answer_kind = "fact"
     if any(word in lowered for word in ["when", "anniversary", "birthday", "date"]):
@@ -193,12 +211,23 @@ def fallback_query_plan(question: str, catalog: SearchCatalog) -> QueryPlan:
         answer_kind = "summary"
 
     time_hint = "recent" if any(word in lowered for word in ["last", "recent", "recently", "today", "yesterday"]) else "any"
-    preferred_senders = [name for name in catalog.sender_names if name and name.casefold().split()[0] in lowered][:3]
-    preferred_chats = [name for name in catalog.chat_names if name and name.casefold().split()[0] in lowered][:3]
+
+    found_people = [
+        person for person in graph.people
+        if person.canonical_name.casefold() in lowered
+        or any(alias.casefold() in lowered for alias in person.aliases)
+    ]
+    preferred_senders = [person.canonical_name for person in found_people] or [
+        name for name in catalog.sender_names if name and name.casefold().split()[0] in lowered
+    ][:3]
+    preferred_chats = [chat_id for person in found_people for chat_id in person.chat_ids] or [
+        name for name in catalog.chat_names if name and name.casefold().split()[0] in lowered
+    ][:3]
+    people_names = [person.canonical_name for person in found_people]
     return QueryPlan(
         normalized_question=question,
         search_queries=[question],
-        people=preferred_senders,
+        people=people_names,
         chat_hints=preferred_chats,
         preferred_senders=preferred_senders,
         preferred_chats=preferred_chats,
@@ -209,36 +238,63 @@ def fallback_query_plan(question: str, catalog: SearchCatalog) -> QueryPlan:
 
 def plan_archive_query(config: AppConfig, question: str, llm_client: QueryPlannerClient | None = None) -> QueryPlan:
     catalog = collect_search_catalog(config)
+    graph = load_person_graph(config)
     client = llm_client or OpenAiCompatLlmClient()
     try:
-        plan = client.plan_query(config, question, catalog)
+        plan = client.plan_query(config, question, catalog, graph)
     except Exception:
-        return fallback_query_plan(question, catalog)
+        return fallback_query_plan(question, catalog, graph)
 
     if not plan.search_queries:
-        return fallback_query_plan(question, catalog)
+        return fallback_query_plan(question, catalog, graph)
+
+    resolved_people = graph.find_people(plan.people)
+    for person in resolved_people:
+        if person.canonical_name not in [name.casefold() for name in plan.preferred_senders]:
+            plan.preferred_senders.append(person.canonical_name)
+        for chat_id in person.chat_ids:
+            if chat_id not in plan.preferred_chats:
+                plan.preferred_chats.append(chat_id)
     return plan
 
 
-def build_answer_prompt(question: str, evidence: list[EvidenceItem]) -> str:
-    evidence_block = "\n\n".join(
-        (
-            f"{item.citation_id} chat={item.chat_name}\n"
-            f"sender={item.sender_name}\n"
-            f"timestamp={item.timestamp}\n"
-            f"excerpt={item.excerpt}"
-        )
+def build_answer_prompt(question: str, evidence: list[EvidenceItem], person_context: str = "") -> str:
+    evidence_block = "\n".join(
+        f"{item.citation_id} [{item.chat_name}] {item.sender_name} @ {item.timestamp}: {item.excerpt}"
         for item in evidence
     )
+    context_line = f"\nPerson context: {person_context}\n" if person_context else ""
     return (
         "Answer the question using only the evidence below.\n"
+        "Pay close attention to the sender name and chat name on each line.\n"
         "If the evidence is partial, say what the evidence does support and what remains unclear.\n"
         "Only say the evidence is insufficient when the evidence truly does not support even a partial answer.\n"
         "Cite factual claims with citation ids like [1].\n"
         "Do not invent names, dates, addresses, or events.\n"
-        "Do not output chain-of-thought.\n\n"
+        "Do not output chain-of-thought.\n"
+        f"{context_line}\n"
         f"Question:\n{question}\n\n"
         f"Evidence:\n{evidence_block}"
+    )
+
+
+def build_verification_prompt(answer: str, question: str, evidence: list[EvidenceItem], person_context: str = "") -> str:
+    evidence_block = "\n".join(
+        f"{item.citation_id} [{item.chat_name}] {item.sender_name} @ {item.timestamp}: {item.excerpt}"
+        for item in evidence
+    )
+    context_line = f"\nPerson context: {person_context}\n" if person_context else ""
+    return (
+        "Verify the answer below against the evidence.\n"
+        "Return a corrected answer that is fully supported by the evidence.\n"
+        "Strip any unsupported claims, names, dates, or facts.\n"
+        "If a claim in the original answer is wrong, replace it with what the evidence actually says.\n"
+        "Keep the citation ids from the original answer where they are valid.\n"
+        "Do not output chain-of-thought. Return only the corrected answer.\n"
+        f"{context_line}\n"
+        f"Original question:\n{question}\n\n"
+        f"Evidence:\n{evidence_block}\n\n"
+        f"Answer to verify:\n{answer}"
     )
 
 
@@ -279,12 +335,16 @@ def ask_archive(
 ) -> AskResponse:
     planner_client = llm_client if llm_client and hasattr(llm_client, "plan_query") else None
     plan = plan_archive_query(config, question, planner_client)  # type: ignore[arg-type]
+    graph = load_person_graph(config)
+    resolved_people = graph.find_people(plan.people)
+    preferred_senders = list(dict.fromkeys(plan.preferred_senders + [p.canonical_name for p in resolved_people]))
+    preferred_chats = list(dict.fromkeys(plan.preferred_chats + [chat_id for p in resolved_people for chat_id in p.chat_ids]))
     retrieval = search_archive_multi(
         config,
         plan.all_queries(question),
         limit=max(limit or config.llm.max_input_snippets, config.llm.max_input_snippets),
-        preferred_senders=plan.preferred_senders or plan.people,
-        preferred_chats=plan.preferred_chats or plan.chat_hints,
+        preferred_senders=preferred_senders,
+        preferred_chats=preferred_chats,
         answer_kind=plan.answer_kind,
         time_hint=plan.time_hint,
     )
@@ -299,5 +359,13 @@ def ask_archive(
         )
 
     client = llm_client or OpenAiCompatLlmClient()
-    answer = client.answer_from_evidence(config, question, evidence)
+    resolved_people = graph.find_people(plan.people)
+    person_context = ""
+    if resolved_people:
+        person_lines = []
+        for p in resolved_people:
+            aliases_str = f" (aliases: {', '.join(p.aliases)})" if p.aliases else ""
+            person_lines.append(f"{p.canonical_name}{aliases_str}")
+        person_context = "; ".join(person_lines)
+    answer = client.answer_from_evidence(config, question, evidence, person_context)
     return AskResponse(question=question, answer=answer, evidence=evidence, retrieval=retrieval, plan=plan)

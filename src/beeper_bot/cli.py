@@ -10,6 +10,8 @@ from .bridge import ControlBridge
 from .config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from .db import SCHEMA_VERSION, collect_runtime_status, init_db_path
 from .llm import LlmError, ask_archive, format_ask_response
+from .people import (load_person_graph, seed_person, add_person_alias, add_person_chat,
+                    delete_person, delete_person as remove_person)
 from .retrieval import format_find_response, search_archive
 from .sync import sync_chats
 
@@ -47,6 +49,24 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--once", action="store_true", help="Run one poll pass and exit")
     serve.add_argument("--json", action="store_true", help="Print machine-readable output for --once")
 
+    people = subparsers.add_parser("people", help="Manage the person graph")
+    people_sub = people.add_subparsers(dest="people_command", required=True)
+    people_list = people_sub.add_parser("list", help="List all known people")
+    people_list.add_argument("--json", action="store_true", help="Print machine-readable output")
+    people_seed = people_sub.add_parser("seed", help="Create or replace a person entry")
+    people_seed.add_argument("person_id", help="Stable identifier, e.g. adrienne-pena")
+    people_seed.add_argument("canonical_name", help="Full display name")
+    people_seed.add_argument("--alias", action="append", dest="aliases", help="Name alias; repeatable")
+    people_seed.add_argument("--chat-id", action="append", dest="chat_ids", help="Associated chat ID; repeatable")
+    people_alias = people_sub.add_parser("alias", help="Add an alias to an existing person")
+    people_alias.add_argument("person_id", help="Person identifier")
+    people_alias.add_argument("alias", help="Alias to add")
+    people_link = people_sub.add_parser("link", help="Link a chat to a person")
+    people_link.add_argument("person_id", help="Person identifier")
+    people_link.add_argument("chat_id", help="Chat ID to associate")
+    people_del = people_sub.add_parser("delete", help="Remove a person")
+    people_del.add_argument("person_id", help="Person identifier to remove")
+
     return parser
 
 
@@ -70,6 +90,7 @@ def _status_payload(config_path: Path):
             "fts_count": status.database.fts_count,
             "sync_state_count": status.database.sync_state_count,
             "runtime_state_count": status.database.runtime_state_count,
+            "people_count": status.database.people_count,
         },
     }
 
@@ -115,6 +136,7 @@ def cmd_status(config_path: Path, as_json: bool) -> int:
     print(f"FTS rows: {payload['database']['fts_count']}")
     print(f"Sync state rows: {payload['database']['sync_state_count']}")
     print(f"Runtime state rows: {payload['database']['runtime_state_count']}")
+    print(f"People: {payload['database']['people_count']}")
     return 0
 
 
@@ -235,6 +257,52 @@ def cmd_serve(config_path: Path, once: bool, as_json: bool) -> int:
     return 0
 
 
+def cmd_people(config_path: Path, args: argparse.Namespace) -> int:
+    config = load_config(config_path)
+    sub = args.people_command
+    if sub == "list":
+        graph = load_person_graph(config)
+        if args.json:
+            payload = {
+                "people": [
+                    {
+                        "person_id": p.person_id,
+                        "canonical_name": p.canonical_name,
+                        "aliases": p.aliases,
+                        "chat_ids": p.chat_ids,
+                    }
+                    for p in graph.people
+                ]
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            for p in graph.people:
+                print(f"{p.person_id}: {p.canonical_name}")
+                if p.aliases:
+                    print(f"  aliases: {', '.join(p.aliases)}")
+                if p.chat_ids:
+                    for chat_id in p.chat_ids:
+                        print(f"  chat: {chat_id}")
+        return 0
+    if sub == "seed":
+        seed_person(config, args.person_id, args.canonical_name, args.aliases or [], args.chat_ids or [])
+        print(f"Seeded person: {args.person_id} -> {args.canonical_name}")
+        return 0
+    if sub == "alias":
+        add_person_alias(config, args.person_id, args.alias)
+        print(f"Added alias '{args.alias}' to {args.person_id}")
+        return 0
+    if sub == "link":
+        add_person_chat(config, args.person_id, args.chat_id)
+        print(f"Linked chat {args.chat_id} to {args.person_id}")
+        return 0
+    if sub == "delete":
+        delete_person(config, args.person_id)
+        print(f"Deleted person: {args.person_id}")
+        return 0
+    raise ConfigError(f"Unknown people subcommand: {sub}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -253,6 +321,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_ask(config_path, args.question, args.limit, args.json)
         if args.command == "serve":
             return cmd_serve(config_path, args.once, args.json)
+        if args.command == "people":
+            return cmd_people(config_path, args)
     except ConfigError as exc:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2

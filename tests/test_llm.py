@@ -37,10 +37,10 @@ class FakeLlmClient:
             time_hint="any",
         )
 
-    def answer_from_evidence(self, config, question: str, evidence: list[EvidenceItem]) -> str:
+    def answer_from_evidence(self, config, question: str, evidence: list[EvidenceItem], person_context: str = "") -> str:
         return self.answer
 
-    def plan_query(self, config, question: str, catalog) -> QueryPlan:
+    def plan_query(self, config, question: str, catalog, graph=None) -> QueryPlan:
         return self.plan
 
 
@@ -113,7 +113,7 @@ class LlmTest(unittest.TestCase):
         ]
         prompt = build_answer_prompt("What address?", evidence)
         self.assertIn("Question:\nWhat address?", prompt)
-        self.assertIn("[1] chat=Family logistics", prompt)
+        self.assertIn("[1] [Family logistics]", prompt)
 
     def test_format_ask_response_appends_sources(self) -> None:
         response = AskResponse(

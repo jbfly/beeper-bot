@@ -11,7 +11,7 @@ from typing import Iterator
 from .config import AppConfig, ensure_private_dir, ensure_private_file
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(slots=True)
@@ -23,6 +23,7 @@ class DatabaseStats:
     fts_count: int
     sync_state_count: int
     runtime_state_count: int
+    people_count: int
     file_exists: bool
     file_size_bytes: int
 
@@ -117,6 +118,59 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             sender_name,
             text
         );
+
+        CREATE TABLE IF NOT EXISTS people (
+            person_id TEXT PRIMARY KEY,
+            canonical_name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS person_aliases (
+            person_id TEXT NOT NULL,
+            alias TEXT NOT NULL,
+            PRIMARY KEY (person_id, alias),
+            FOREIGN KEY (person_id) REFERENCES people(person_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS person_chats (
+            person_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            PRIMARY KEY (person_id, chat_id),
+            FOREIGN KEY (person_id) REFERENCES people(person_id)
+        );
+        COMMIT;
+        """
+    )
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    conn.commit()
+
+
+def migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version >= 2:
+        return
+    conn.executescript(
+        """
+        BEGIN;
+        CREATE TABLE IF NOT EXISTS people (
+            person_id TEXT PRIMARY KEY,
+            canonical_name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS person_aliases (
+            person_id TEXT NOT NULL,
+            alias TEXT NOT NULL,
+            PRIMARY KEY (person_id, alias),
+            FOREIGN KEY (person_id) REFERENCES people(person_id)
+        );
+        CREATE TABLE IF NOT EXISTS person_chats (
+            person_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            PRIMARY KEY (person_id, chat_id),
+            FOREIGN KEY (person_id) REFERENCES people(person_id)
+        );
         COMMIT;
         """
     )
@@ -128,7 +182,11 @@ def init_db_path(db_path: Path) -> None:
     ensure_private_dir(db_path.parent)
     ensure_private_file(db_path)
     with open_db(db_path) as conn:
-        initialize_database(conn)
+        version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        if version == 0:
+            initialize_database(conn)
+        elif version == 1:
+            migrate_v1_to_v2(conn)
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
@@ -177,6 +235,7 @@ def collect_database_stats(db_path: Path) -> DatabaseStats:
             fts_count=0,
             sync_state_count=0,
             runtime_state_count=0,
+            people_count=0,
             file_exists=False,
             file_size_bytes=0,
         )
@@ -188,6 +247,7 @@ def collect_database_stats(db_path: Path) -> DatabaseStats:
         fts_count = int(conn.execute("SELECT COUNT(*) FROM message_fts").fetchone()[0])
         sync_state_count = int(conn.execute("SELECT COUNT(*) FROM sync_state").fetchone()[0])
         runtime_state_count = int(conn.execute("SELECT COUNT(*) FROM runtime_state").fetchone()[0])
+        people_count = int(conn.execute("SELECT COUNT(*) FROM people").fetchone()[0])
 
     return DatabaseStats(
         path=db_path,
@@ -197,6 +257,7 @@ def collect_database_stats(db_path: Path) -> DatabaseStats:
         fts_count=fts_count,
         sync_state_count=sync_state_count,
         runtime_state_count=runtime_state_count,
+        people_count=people_count,
         file_exists=True,
         file_size_bytes=file_size,
     )
