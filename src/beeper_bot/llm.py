@@ -10,7 +10,7 @@ from urllib import error, parse, request
 from .config import AppConfig
 from .people import PersonGraph, load_person_graph
 from .planning import QueryPlan
-from .retrieval import SearchCatalog, SearchResponse, SearchResult, collect_search_catalog, search_archive_multi
+from .retrieval import SearchCatalog, SearchResponse, SearchResult, collect_search_catalog, expand_results_with_context, search_archive_multi
 
 
 CITATION_RE = re.compile(r"\[(\d+)\]")
@@ -128,9 +128,16 @@ class OpenAiCompatLlmClient:
 def build_evidence_packet(results: list[SearchResult], limit: int) -> list[EvidenceItem]:
     evidence: list[EvidenceItem] = []
     for idx, result in enumerate(results[:limit], start=1):
-        excerpt = result.text.replace("\n", " ").strip()
-        if len(excerpt) > 400:
-            excerpt = excerpt[:397].rstrip() + "..."
+        text = result.text.strip()
+        if "[context]" in text or "[match]" in text:
+            lines = text.split("\n")
+            if len(lines) > 12:
+                lines = lines[:12]
+            excerpt = "\n".join(lines)
+        else:
+            excerpt = text.replace("\n", " ").strip()
+            if len(excerpt) > 600:
+                excerpt = excerpt[:597].rstrip() + "..."
         evidence.append(
             EvidenceItem(
                 citation_id=f"[{idx}]",
@@ -348,6 +355,7 @@ def ask_archive(
         answer_kind=plan.answer_kind,
         time_hint=plan.time_hint,
     )
+    retrieval.results = expand_results_with_context(config, retrieval.results, window=3)
     evidence = build_evidence_packet(retrieval.results, config.llm.max_input_snippets)
     if not evidence:
         return AskResponse(

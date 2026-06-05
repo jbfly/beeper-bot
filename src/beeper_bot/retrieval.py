@@ -86,7 +86,35 @@ def _fts_query(query: str) -> str:
     return " OR ".join(f'"{token.replace('"', '""')}"' for token in tokens[:12])
 
 
-def _candidate_rows(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlite3.Row]:
+def _date_bounds_from_query(query: str) -> tuple[str | None, str | None]:
+    """Try to extract a date range from a natural language query.
+    Returns (start_iso, end_iso) or (None, None) if no date found."""
+    import re as _re
+    months = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+        "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+    }
+    pattern = _re.compile(
+        r"(?P<month>" + "|".join(months) + r")(?:\s+)(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:[,\s]+(?P<year>\d{4}))?",
+        _re.IGNORECASE,
+    )
+    match = pattern.search(query)
+    if not match:
+        # try ISO date
+        iso = _re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", query)
+        if iso:
+            return (iso.group(0) + "T00:00:00Z", iso.group(0) + "T23:59:59Z")
+        return (None, None)
+    month = months[match.group("month").lower()]
+    day = int(match.group("day"))
+    year = int(match.group("year")) if match.group("year") else 2026
+    date_str = f"{year:04d}-{month:02d}-{day:02d}"
+    return (date_str + "T00:00:00Z", date_str + "T23:59:59Z")
+
+
+def _candidate_rows(conn: sqlite3.Connection, query: str, limit: int, date_start: str | None = None, date_end: str | None = None) -> list[sqlite3.Row]:
     fts_query = _fts_query(query)
     normalized_query = normalize_text(query) or query.strip()
     rows: list[sqlite3.Row] = []
@@ -107,10 +135,12 @@ def _candidate_rows(conn: sqlite3.Connection, query: str, limit: int) -> list[sq
                 JOIN messages AS m ON m.message_id = message_fts.message_id
                 JOIN chats AS c ON c.chat_id = m.chat_id
                 WHERE message_fts MATCH ?
+                  AND (? IS NULL OR m.timestamp >= ?)
+                  AND (? IS NULL OR m.timestamp <= ?)
                 ORDER BY bm25(message_fts), m.sort_key DESC
                 LIMIT ?
                 """,
-                (fts_query, max(limit * 4, 20)),
+                (fts_query, date_start, date_start, date_end, date_end, max(limit * 4, 20)),
             )
         )
 
@@ -129,13 +159,15 @@ def _candidate_rows(conn: sqlite3.Connection, query: str, limit: int) -> list[sq
                 0.0 AS bm25_score
             FROM messages AS m
             JOIN chats AS c ON c.chat_id = m.chat_id
-            WHERE COALESCE(m.normalized_text, '') LIKE ?
+            WHERE (COALESCE(m.normalized_text, '') LIKE ?
                OR COALESCE(m.sender_name, '') LIKE ?
-               OR c.name LIKE ?
+               OR c.name LIKE ?)
+              AND (? IS NULL OR m.timestamp >= ?)
+              AND (? IS NULL OR m.timestamp <= ?)
             ORDER BY m.sort_key DESC
             LIMIT ?
             """,
-            (like_query, like_query, like_query, max(limit * 4, 20)),
+            (like_query, like_query, like_query, date_start, date_start, date_end, date_end, max(limit * 4, 20)),
         )
         for row in exact_rows:
             if str(row["message_id"]) not in seen:
@@ -231,13 +263,17 @@ def collect_search_catalog(config: AppConfig, sender_limit: int = 100, chat_limi
     return SearchCatalog(sender_names=sender_names, chat_names=chat_names)
 
 
-def search_archive(config: AppConfig, query: str, limit: int = 5) -> SearchResponse:
+def search_archive(config: AppConfig, query: str, limit: int = 5, date_start: str | None = None, date_end: str | None = None) -> SearchResponse:
     query = query.strip()
     if not query:
         return SearchResponse(query=query, results=[])
 
+    ds, de = date_start, date_end
+    if ds is None and de is None:
+        ds, de = _date_bounds_from_query(query)
+
     with open_db(config.archive.path) as conn:
-        rows = _candidate_rows(conn, query, limit)
+        rows = _candidate_rows(conn, query, limit, ds, de)
 
     features = detect_query_features(query)
     scored: list[SearchResult] = []
@@ -260,6 +296,57 @@ def search_archive(config: AppConfig, query: str, limit: int = 5) -> SearchRespo
         scored = [item for item in scored if "token-overlap" in item.match_reasons or item.match_reasons]
     scored.sort(key=lambda item: (-item.score, item.timestamp, item.message_id))
     return SearchResponse(query=query, results=scored[:limit])
+
+
+def expand_results_with_context(config: AppConfig, results: list[SearchResult], window: int = 3) -> list[SearchResult]:
+    if not results:
+        return results
+
+    with open_db(config.archive.path) as conn:
+        for result in results:
+            before = conn.execute(
+                """
+                SELECT sender_name, text, timestamp
+                FROM messages
+                WHERE chat_id = ? AND sort_key < ?
+                ORDER BY sort_key DESC
+                LIMIT ?
+                """,
+                (result.chat_id, _result_sort_key(conn, result.message_id), window),
+            ).fetchall()
+            after = conn.execute(
+                """
+                SELECT sender_name, text, timestamp
+                FROM messages
+                WHERE chat_id = ? AND sort_key > ?
+                ORDER BY sort_key ASC
+                LIMIT ?
+                """,
+                (result.chat_id, _result_sort_key(conn, result.message_id), window),
+            ).fetchall()
+
+            lines: list[str] = []
+            for row in reversed(before):
+                sender = row["sender_name"] or "unknown"
+                txt = (row["text"] or "").replace("\n", " ").strip()
+                if txt:
+                    lines.append(f"[context] {sender}: {txt}")
+            lines.append(f"[match] {result.sender_name}: {result.text}")
+            for row in after:
+                sender = row["sender_name"] or "unknown"
+                txt = (row["text"] or "").replace("\n", " ").strip()
+                if txt:
+                    lines.append(f"[context] {sender}: {txt}")
+
+            if len(lines) > 1:
+                result.text = "\n".join(lines)
+
+    return results
+
+
+def _result_sort_key(conn: sqlite3.Connection, message_id: str) -> int:
+    row = conn.execute("SELECT sort_key FROM messages WHERE message_id = ?", (message_id,)).fetchone()
+    return int(row[0]) if row else 0
 
 
 def search_archive_multi(
