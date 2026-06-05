@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beeper-bot"
+version = "0.1.0"
+description = "Local-first Beeper memory and assistant bot"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "jbfly" }]
+dependencies = []
+
+[project.scripts]
+beeper-bot = "beeper_bot.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
