@@ -346,14 +346,22 @@ def ask_archive(
     resolved_people = graph.find_people(plan.people)
     preferred_senders = list(dict.fromkeys(plan.preferred_senders + [p.canonical_name for p in resolved_people]))
     preferred_chats = list(dict.fromkeys(plan.preferred_chats + [chat_id for p in resolved_people for chat_id in p.chat_ids]))
+    cross_person_chats: list[str] = []
+    if len(resolved_people) >= 2:
+        chat_sets = [set(p.chat_ids) for p in resolved_people]
+        common = chat_sets[0]
+        for cs in chat_sets[1:]:
+            common = common & cs
+        cross_person_chats = list(common)
     retrieval = search_archive_multi(
         config,
         plan.all_queries(question),
         limit=max(limit or config.llm.max_input_snippets, config.llm.max_input_snippets),
         preferred_senders=preferred_senders,
-        preferred_chats=preferred_chats,
+        preferred_chats=cross_person_chats or preferred_chats,
         answer_kind=plan.answer_kind,
         time_hint=plan.time_hint,
+        restrict_chats=cross_person_chats or None,
     )
     retrieval.results = expand_results_with_context(config, retrieval.results, window=3)
     evidence = build_evidence_packet(retrieval.results, config.llm.max_input_snippets)
@@ -375,5 +383,6 @@ def ask_archive(
             aliases_str = f" (aliases: {', '.join(p.aliases)})" if p.aliases else ""
             person_lines.append(f"{p.canonical_name}{aliases_str}")
         person_context = "; ".join(person_lines)
+
     answer = client.answer_from_evidence(config, question, evidence, person_context)
     return AskResponse(question=question, answer=answer, evidence=evidence, retrieval=retrieval, plan=plan)

@@ -357,14 +357,18 @@ def search_archive_multi(
     preferred_chats: list[str] | None = None,
     answer_kind: str = "fact",
     time_hint: str = "any",
+    restrict_chats: list[str] | None = None,
 ) -> SearchResponse:
     merged: dict[str, SearchResult] = {}
     preferred_senders_cf = {value.casefold() for value in preferred_senders or [] if value.strip()}
     preferred_chats_cf = {value.casefold() for value in preferred_chats or [] if value.strip()}
+    restrict_chats_cf = {value.casefold() for value in restrict_chats or [] if value.strip()}
 
     for query in queries:
         response = search_archive(config, query, limit=max(limit, 8))
         for result in response.results:
+            if restrict_chats_cf and result.chat_id.casefold() not in restrict_chats_cf:
+                continue
             score = result.score
             reasons = list(result.match_reasons)
             if result.sender_name.casefold() in preferred_senders_cf:
