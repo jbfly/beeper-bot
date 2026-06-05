@@ -21,6 +21,20 @@ class MessagePage:
     newest_cursor: str | None
 
 
+def _parse_message_page(chat_id: str, payload: Any) -> MessagePage:
+    if not isinstance(payload, dict):
+        raise BeeperApiError(f"Unexpected Beeper response")
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        raise BeeperApiError(f"Unexpected Beeper items")
+    return MessagePage(
+        items=[item for item in items if isinstance(item, dict)],
+        has_more=bool(payload.get("hasMore", False)),
+        oldest_cursor=str(payload["oldestCursor"]) if payload.get("oldestCursor") not in (None, "") else None,
+        newest_cursor=str(payload["newestCursor"]) if payload.get("newestCursor") not in (None, "") else None,
+    )
+
+
 class BeeperApiClient:
     def __init__(self, config: BeeperConfig):
         self.config = config
@@ -84,17 +98,29 @@ class BeeperApiClient:
                 params["direction"] = direction
             query = "?" + parse.urlencode(params)
         payload = self._request("GET", f"/chats/{quoted}/messages{query}")
-        if not isinstance(payload, dict):
-            raise BeeperApiError(f"Unexpected Beeper message response for chat {chat_id}")
-        items = payload.get("items", [])
-        if not isinstance(items, list):
-            raise BeeperApiError(f"Unexpected Beeper message items for chat {chat_id}")
-        return MessagePage(
-            items=[item for item in items if isinstance(item, dict)],
-            has_more=bool(payload.get("hasMore", False)),
-            oldest_cursor=str(payload["oldestCursor"]) if payload.get("oldestCursor") not in (None, "") else None,
-            newest_cursor=str(payload["newestCursor"]) if payload.get("newestCursor") not in (None, "") else None,
-        )
+        return _parse_message_page(chat_id, payload)
+
+    def fetch_chats_page(self, cursor: str | None = None, direction: str | None = None) -> MessagePage:
+        query = ""
+        if cursor:
+            params = {"cursor": cursor}
+            if direction:
+                params["direction"] = direction
+            query = "?" + parse.urlencode(params)
+        payload = self._request("GET", f"/chats{query}")
+        return _parse_message_page("", payload)
+
+    def fetch_all_chats(self) -> list[dict[str, Any]]:
+        page = self.fetch_chats_page()
+        all_items = list(page.items)
+        cursor = page.oldest_cursor
+        while cursor and page.has_more:
+            page = self.fetch_chats_page(cursor=cursor, direction="before")
+            if not page.items:
+                break
+            all_items.extend(page.items)
+            cursor = page.oldest_cursor
+        return all_items
 
     def fetch_messages(self, chat_id: str) -> list[dict[str, Any]]:
         return self.fetch_messages_page(chat_id).items

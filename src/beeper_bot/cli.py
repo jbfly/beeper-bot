@@ -49,6 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--once", action="store_true", help="Run one poll pass and exit")
     serve.add_argument("--json", action="store_true", help="Print machine-readable output for --once")
 
+    chats = subparsers.add_parser("chats", help="List available Beeper chats")
+    chats.add_argument("--json", action="store_true", help="Print machine-readable output")
+    chats.add_argument("--query", help="Filter by title or participant name")
+
     people = subparsers.add_parser("people", help="Manage the person graph")
     people_sub = people.add_subparsers(dest="people_command", required=True)
     people_list = people_sub.add_parser("list", help="List all known people")
@@ -257,6 +261,30 @@ def cmd_serve(config_path: Path, once: bool, as_json: bool) -> int:
     return 0
 
 
+def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int:
+    config = load_config(config_path)
+    client = BeeperApiClient(config.beeper)
+    all_chats = client.fetch_all_chats()
+
+    if query_filter:
+        lowered = query_filter.lower()
+        all_chats = [
+            item for item in all_chats
+            if lowered in str(item.get('title', '')).lower()
+            or lowered in str(item.get('network', '')).lower()
+        ]
+
+    if as_json:
+        print(json.dumps(all_chats, indent=2, sort_keys=True, default=str))
+        return 0
+
+    for item in all_chats:
+        title = str(item.get('title') or '(no title)')
+        print(f'{item.get("id")}  "{title}"  {item.get("network","")}  {item.get("type","")}')
+    print(f'\n{len(all_chats)} chats total')
+    return 0
+
+
 def cmd_people(config_path: Path, args: argparse.Namespace) -> int:
     config = load_config(config_path)
     sub = args.people_command
@@ -323,6 +351,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_serve(config_path, args.once, args.json)
         if args.command == "people":
             return cmd_people(config_path, args)
+        if args.command == "chats":
+            return cmd_chats(config_path, args.query, args.json)
     except ConfigError as exc:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2
