@@ -108,6 +108,19 @@ Reasons:
 
 The MCP server may be useful later as a tool adapter, but not as the base transport.
 
+## 6.1 Deployment note
+
+The MVP should run on one desktop machine.
+
+Reasons:
+- the Beeper Desktop local API lives there
+- local model inference lives there
+- a single-machine proof of concept is easier to debug
+
+Later, the archive or retrieval service may move to an always-on homelab server.
+That server could hold a replicated database and send Wake-on-LAN to the desktop when fresh sync or local AI work is needed.
+As long as the Beeper Desktop local API is the source, the desktop remains the ingest authority.
+
 ## 7. Storage design
 
 Database file:
@@ -351,6 +364,8 @@ Flow:
 4. write sync command for one chat
 5. inspect and tune the existing `llama.cpp` server for localhost-only use
 6. benchmark current Gemma model against one Qwen candidate
+
+See `docs/implementation-plan.md` for the concrete module, schema, command, and milestone breakdown.
 
 ## 17. Open questions
 

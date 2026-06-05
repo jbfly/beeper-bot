@@ -14,4 +14,6 @@ Run a private agent behind a Beeper control chat. The agent indexes selected Bee
 - answer through a private Beeper control chat
 - use a local `llama.cpp` server for synthesis
 
-See `docs/technical-plan.md`.
+See:
+- `docs/technical-plan.md`
+- `docs/implementation-plan.md`
