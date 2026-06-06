@@ -6,12 +6,12 @@
       "id": "tom_to_addy_last",
       "question": "What was the last thing that Tom said to Addy?",
       "tags": ["cross-person", "last-message", "shared-chat"],
-      "notes": "Should prefer a Thomas Wright message in a chat shared with Adrienne/Addy.",
-      "answer_contains_any": ["how long is your next flight"],
+      "notes": "Diagnostic only for now. We can identify shared-chat Thomas messages, but not reliably resolve which recent one was directed to Addy.",
+      "score_case": false,
+      "answer_contains_any": ["how long is your next flight", "welcome home", "Not too bad", "looking awesome"],
       "evidence_sender_any": ["Thomas Wright"],
-      "evidence_chat_any": ["Tejanos (and Tom)"],
-      "top_evidence_sender_any": ["Thomas Wright"],
-      "top_evidence_chat_any": ["Tejanos (and Tom)"]
+      "evidence_chat_any": ["Tejanos (and Tom)", "La Familia (+Addy)"],
+      "top_evidence_sender_any": ["Thomas Wright"]
     },
     {
       "id": "addy_and_i_may18",

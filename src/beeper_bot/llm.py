@@ -259,9 +259,11 @@ def plan_archive_query(config: AppConfig, question: str, llm_client: QueryPlanne
         return fallback_query_plan(question, catalog, graph)
 
     resolved_people = graph.find_people(plan.people)
+    preferred_sender_keys = {name.casefold() for name in plan.preferred_senders}
     for person in resolved_people:
-        if person.canonical_name not in [name.casefold() for name in plan.preferred_senders]:
+        if person.canonical_name.casefold() not in preferred_sender_keys:
             plan.preferred_senders.append(person.canonical_name)
+            preferred_sender_keys.add(person.canonical_name.casefold())
         for chat_id in person.chat_ids:
             if chat_id not in plan.preferred_chats:
                 plan.preferred_chats.append(chat_id)
@@ -341,6 +343,131 @@ def format_ask_response(response: AskResponse) -> str:
     return "\n".join(lines)
 
 
+SPEAKER_VERBS = (
+    "said",
+    "say",
+    "sent",
+    "send",
+    "asked",
+    "ask",
+    "told",
+    "tell",
+    "wrote",
+    "write",
+    "texted",
+    "text",
+    "messaged",
+    "message",
+    "posted",
+    "post",
+    "set up",
+)
+
+
+def _person_variants(person) -> list[str]:
+    values = [person.canonical_name, *person.aliases]
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        key = value.strip().casefold()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        ordered.append(key)
+    return ordered
+
+
+def _contains_relation(lowered: str, speaker_variants: list[str], target_variants: list[str]) -> bool:
+    templates = (
+        "{speaker} said to {target}",
+        "{speaker} say to {target}",
+        "{speaker} last said to {target}",
+        "{speaker} last say to {target}",
+        "{speaker} told {target}",
+        "{speaker} tell {target}",
+        "{speaker} asked {target}",
+        "{speaker} ask {target}",
+    )
+    for speaker in speaker_variants:
+        for target in target_variants:
+            for template in templates:
+                if template.format(speaker=speaker, target=target) in lowered:
+                    return True
+    return False
+
+
+def _infer_retrieval_constraints(question: str, resolved_people: list) -> tuple[list[str], list[str]]:
+    lowered = question.casefold()
+    speaker_only: list[str] = []
+    chat_only: list[str] = []
+
+    for speaker in resolved_people:
+        speaker_variants = _person_variants(speaker)
+        for target in resolved_people:
+            if speaker.person_id == target.person_id:
+                continue
+            if _contains_relation(lowered, speaker_variants, _person_variants(target)):
+                speaker_only = [speaker.canonical_name]
+                common = set(speaker.chat_ids) & set(target.chat_ids)
+                chat_only = sorted(common)
+                return speaker_only, chat_only
+
+    for person in resolved_people:
+        for variant in _person_variants(person):
+            pattern = re.compile(
+                rf"\b{re.escape(variant)}\b(?:\W+\w+){{0,3}}\W+(?:{'|'.join(re.escape(verb) for verb in SPEAKER_VERBS)})\b",
+                re.IGNORECASE,
+            )
+            if pattern.search(question):
+                return [person.canonical_name], []
+
+    return speaker_only, chat_only
+
+
+LOCAL_QUERY_STOPWORDS = {
+    "what", "was", "were", "did", "does", "do", "the", "a", "an", "to", "from", "of", "on", "in",
+    "and", "or", "me", "my", "our", "us", "you", "your", "i", "is", "it", "that", "this", "thing", "things",
+}
+
+
+def _supplement_search_queries(question: str, plan: QueryPlan, resolved_people: list) -> list[str]:
+    lowered = question.casefold()
+    seen = {value.casefold() for value in plan.all_queries(question)}
+    extras: list[str] = []
+
+    def add(value: str) -> None:
+        candidate = value.strip()
+        if not candidate or candidate.casefold() in seen:
+            return
+        seen.add(candidate.casefold())
+        extras.append(candidate)
+
+    tokens = [token for token in re.findall(r"[A-Za-zÀ-ÿ0-9'.-]+", question) if len(token) > 2]
+    compact = [token for token in tokens if token.casefold() not in LOCAL_QUERY_STOPWORDS]
+
+    if "address" in lowered:
+        for person in resolved_people:
+            add(f"{person.canonical_name} address")
+        for token in compact:
+            if token[0].isupper():
+                add(token)
+                add(f"{token} address")
+        add("Rua")
+        add("Avenida")
+        add("street")
+
+    if "store" in lowered:
+        for person in resolved_people:
+            add(f"{person.canonical_name} store")
+        add("store next door")
+        add("bottom sheets")
+
+    if compact:
+        add(" ".join(compact[: min(4, len(compact))]))
+
+    return extras
+
+
 def ask_archive(
     config: AppConfig,
     question: str,
@@ -353,22 +480,23 @@ def ask_archive(
     resolved_people = graph.find_people(plan.people)
     preferred_senders = list(dict.fromkeys(plan.preferred_senders + [p.canonical_name for p in resolved_people]))
     preferred_chats = list(dict.fromkeys(plan.preferred_chats + [chat_id for p in resolved_people for chat_id in p.chat_ids]))
-    cross_person_chats: list[str] = []
-    if len(resolved_people) >= 2:
-        chat_sets = [set(p.chat_ids) for p in resolved_people]
-        common = chat_sets[0]
-        for cs in chat_sets[1:]:
-            common = common & cs
-        cross_person_chats = list(common)
+    restrict_senders, restrict_chats = _infer_retrieval_constraints(question, resolved_people)
+    if not restrict_senders and len(preferred_senders) == 1:
+        sender_name = preferred_senders[0].strip()
+        first_token = sender_name.casefold().split()[0] if sender_name else ""
+        if first_token and first_token in question.casefold() and ("address" in question.casefold() or any(verb in question.casefold() for verb in SPEAKER_VERBS)):
+            restrict_senders = [sender_name]
+    queries = plan.all_queries(question) + _supplement_search_queries(question, plan, resolved_people)
     retrieval = search_archive_multi(
         config,
-        plan.all_queries(question),
+        queries,
         limit=max(limit or config.llm.max_input_snippets, config.llm.max_input_snippets),
-        preferred_senders=preferred_senders,
-        preferred_chats=cross_person_chats or preferred_chats,
+        preferred_senders=restrict_senders or preferred_senders,
+        preferred_chats=restrict_chats or preferred_chats,
         answer_kind=plan.answer_kind,
         time_hint=plan.time_hint,
-        restrict_chats=cross_person_chats or None,
+        restrict_chats=restrict_chats or None,
+        restrict_senders=restrict_senders or None,
     )
     retrieval.results = expand_results_with_context(config, retrieval.results, window=3)
     evidence = build_evidence_packet(retrieval.results, config.llm.max_input_snippets)

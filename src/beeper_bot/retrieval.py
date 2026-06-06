@@ -10,8 +10,12 @@ from .sync import normalize_text
 
 
 ADDRESS_RE = re.compile(
-    r"\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+"
-    r"(?:st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place)\b",
+    r"\b(?:"
+    r"\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+"
+    r"(?:st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place)"
+    r"|(?:rua|avenida|av|av\.|estrada|travessa)\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}"
+    r"(?:\s+n[.°ºo]*\s*\d+)?(?:\s+r/c)?"
+    r")\b",
     re.IGNORECASE,
 )
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
@@ -29,6 +33,10 @@ STOPWORDS = {
     "recently", "say", "saying", "send", "said", "tell", "telling", "that", "the", "their", "there",
     "they", "thing", "things", "to", "told", "us", "was", "what", "when", "where", "who", "why",
     "with", "you", "your",
+}
+LOW_SIGNAL_TOKENS = {
+    "ask", "asked", "get", "got", "say", "said", "send", "sent", "tell", "told",
+    "message", "messages", "thing", "things", "last", "recent", "recently", "gave", "give",
 }
 
 
@@ -60,15 +68,16 @@ class SearchCatalog:
 
 def detect_query_features(query: str) -> list[str]:
     features: list[str] = []
-    if ADDRESS_RE.search(query):
+    lowered = query.casefold()
+    if ADDRESS_RE.search(query) or "address" in lowered:
         features.append("address")
-    if EMAIL_RE.search(query):
+    if EMAIL_RE.search(query) or "email" in lowered:
         features.append("email")
-    if PHONE_RE.search(query):
+    if PHONE_RE.search(query) or "phone" in lowered or "call" in lowered:
         features.append("phone")
-    if URL_RE.search(query):
+    if URL_RE.search(query) or any(word in lowered for word in ["url", "link", "site", "website"]):
         features.append("url")
-    if DATE_RE.search(query):
+    if DATE_RE.search(query) or any(word in lowered for word in ["date", "day", "month", "year"]):
         features.append("date")
     return features
 
@@ -116,15 +125,32 @@ def _date_bounds_from_query(query: str) -> tuple[str | None, str | None]:
     return (date_str + "T00:00:00Z", date_str + "T23:59:59Z")
 
 
-def _candidate_rows(conn: sqlite3.Connection, query: str, limit: int, date_start: str | None = None, date_end: str | None = None) -> list[sqlite3.Row]:
+def _candidate_rows(
+    conn: sqlite3.Connection,
+    query: str,
+    limit: int,
+    date_start: str | None = None,
+    date_end: str | None = None,
+    sender_names: list[str] | None = None,
+    chat_ids: list[str] | None = None,
+) -> list[sqlite3.Row]:
     fts_query = _fts_query(query)
     normalized_query = normalize_text(query) or query.strip()
     rows: list[sqlite3.Row] = []
+    filter_clauses: list[str] = []
+    filter_params: list[str] = []
+    if sender_names:
+        filter_clauses.append("COALESCE(m.sender_name, '') IN (" + ", ".join("?" for _ in sender_names) + ")")
+        filter_params.extend(sender_names)
+    if chat_ids:
+        filter_clauses.append("m.chat_id IN (" + ", ".join("?" for _ in chat_ids) + ")")
+        filter_params.extend(chat_ids)
+    extra_filters = ""
+    if filter_clauses:
+        extra_filters = "\n                  AND " + "\n                  AND ".join(filter_clauses)
 
     if fts_query:
-        rows = list(
-            conn.execute(
-                """
+        sql = f"""
                 SELECT
                     m.message_id,
                     m.chat_id,
@@ -138,19 +164,21 @@ def _candidate_rows(conn: sqlite3.Connection, query: str, limit: int, date_start
                 JOIN chats AS c ON c.chat_id = m.chat_id
                 WHERE message_fts MATCH ?
                   AND (? IS NULL OR m.timestamp >= ?)
-                  AND (? IS NULL OR m.timestamp <= ?)
+                  AND (? IS NULL OR m.timestamp <= ?){extra_filters}
                 ORDER BY bm25(message_fts), m.sort_key DESC
                 LIMIT ?
-                """,
-                (fts_query, date_start, date_start, date_end, date_end, max(limit * 4, 20)),
+                """
+        rows = list(
+            conn.execute(
+                sql,
+                (fts_query, date_start, date_start, date_end, date_end, *filter_params, max(limit * 4, 20)),
             )
         )
 
     if normalized_query:
         like_query = f"%{normalized_query}%"
         seen = {str(row["message_id"]) for row in rows}
-        exact_rows = conn.execute(
-            """
+        sql = f"""
             SELECT
                 m.message_id,
                 m.chat_id,
@@ -165,11 +193,13 @@ def _candidate_rows(conn: sqlite3.Connection, query: str, limit: int, date_start
                OR COALESCE(m.sender_name, '') LIKE ?
                OR c.name LIKE ?)
               AND (? IS NULL OR m.timestamp >= ?)
-              AND (? IS NULL OR m.timestamp <= ?)
+              AND (? IS NULL OR m.timestamp <= ?){extra_filters}
             ORDER BY m.sort_key DESC
             LIMIT ?
-            """,
-            (like_query, like_query, like_query, date_start, date_start, date_end, date_end, max(limit * 4, 20)),
+            """
+        exact_rows = conn.execute(
+            sql,
+            (like_query, like_query, like_query, date_start, date_start, date_end, date_end, *filter_params, max(limit * 4, 20)),
         )
         for row in exact_rows:
             if str(row["message_id"]) not in seen:
@@ -205,9 +235,12 @@ def _score_row(row: sqlite3.Row, query: str, features: list[str]) -> tuple[float
 
     query_tokens = _query_tokens(query)
     text_tokens = set(token.lower() for token in TOKEN_RE.findall(f"{sender_name} {chat_name} {text}"))
-    overlap = sum(1 for token in query_tokens if token in text_tokens)
+    strong_overlap = sum(1 for token in query_tokens if token in text_tokens and token not in LOW_SIGNAL_TOKENS)
+    weak_overlap = sum(1 for token in query_tokens if token in text_tokens and token in LOW_SIGNAL_TOKENS)
+    overlap = strong_overlap + weak_overlap
     if overlap:
-        score += overlap * 8.0
+        score += strong_overlap * 10.0
+        score += weak_overlap * 3.0
         reasons.append("token-overlap")
 
     if "address" in features and ADDRESS_RE.search(text):
@@ -265,7 +298,15 @@ def collect_search_catalog(config: AppConfig, sender_limit: int = 100, chat_limi
     return SearchCatalog(sender_names=sender_names, chat_names=chat_names)
 
 
-def search_archive(config: AppConfig, query: str, limit: int = 5, date_start: str | None = None, date_end: str | None = None) -> SearchResponse:
+def search_archive(
+    config: AppConfig,
+    query: str,
+    limit: int = 5,
+    date_start: str | None = None,
+    date_end: str | None = None,
+    sender_names: list[str] | None = None,
+    chat_ids: list[str] | None = None,
+) -> SearchResponse:
     query = query.strip()
     if not query:
         return SearchResponse(query=query, results=[])
@@ -275,7 +316,7 @@ def search_archive(config: AppConfig, query: str, limit: int = 5, date_start: st
         ds, de = _date_bounds_from_query(query)
 
     with open_db(config.archive.path) as conn:
-        rows = _candidate_rows(conn, query, limit, ds, de)
+        rows = _candidate_rows(conn, query, limit, ds, de, sender_names=sender_names, chat_ids=chat_ids)
 
     features = detect_query_features(query)
     scored: list[SearchResult] = []
@@ -296,7 +337,8 @@ def search_archive(config: AppConfig, query: str, limit: int = 5, date_start: st
 
     if _query_tokens(query):
         scored = [item for item in scored if "token-overlap" in item.match_reasons or item.match_reasons]
-    scored.sort(key=lambda item: (-item.score, item.timestamp, item.message_id))
+    scored.sort(key=lambda item: item.timestamp, reverse=True)
+    scored.sort(key=lambda item: item.score, reverse=True)
     return SearchResponse(query=query, results=scored[:limit])
 
 
@@ -358,23 +400,37 @@ def search_archive_multi(
     answer_kind: str = "fact",
     time_hint: str = "any",
     restrict_chats: list[str] | None = None,
+    restrict_senders: list[str] | None = None,
 ) -> SearchResponse:
     merged: dict[str, SearchResult] = {}
     preferred_senders_cf = {value.casefold() for value in preferred_senders or [] if value.strip()}
     preferred_chats_cf = {value.casefold() for value in preferred_chats or [] if value.strip()}
     restrict_chats_cf = {value.casefold() for value in restrict_chats or [] if value.strip()}
+    restrict_senders_cf = {value.casefold() for value in restrict_senders or [] if value.strip()}
+
+    per_query_limit = max(limit, 8)
+    if restrict_chats_cf or restrict_senders_cf or answer_kind in {"last-message", "url"}:
+        per_query_limit = max(limit * 5, 40)
 
     for query in queries:
-        response = search_archive(config, query, limit=max(limit, 8))
+        response = search_archive(
+            config,
+            query,
+            limit=per_query_limit,
+            sender_names=restrict_senders,
+            chat_ids=restrict_chats,
+        )
         for result in response.results:
             if restrict_chats_cf and result.chat_id.casefold() not in restrict_chats_cf:
+                continue
+            if restrict_senders_cf and result.sender_name.casefold() not in restrict_senders_cf:
                 continue
             score = result.score
             reasons = list(result.match_reasons)
             if result.sender_name.casefold() in preferred_senders_cf:
                 score += 20.0
                 reasons.append("preferred-sender")
-            if result.chat_name.casefold() in preferred_chats_cf:
+            if result.chat_id.casefold() in preferred_chats_cf or result.chat_name.casefold() in preferred_chats_cf:
                 score += 15.0
                 reasons.append("preferred-chat")
             if time_hint == "recent":
@@ -405,7 +461,13 @@ def search_archive_multi(
                 current.score += 2.0
                 current.match_reasons = sorted(set(current.match_reasons + reasons + ["multi-query"] ))
 
-    results = sorted(merged.values(), key=lambda item: (-item.score, item.timestamp, item.message_id))
+    results = list(merged.values())
+    if answer_kind == "last-message":
+        results.sort(key=lambda item: item.score, reverse=True)
+        results.sort(key=lambda item: item.timestamp, reverse=True)
+    else:
+        results.sort(key=lambda item: item.timestamp, reverse=True)
+        results.sort(key=lambda item: item.score, reverse=True)
     return SearchResponse(query=" | ".join(queries), results=results[:limit])
 
 

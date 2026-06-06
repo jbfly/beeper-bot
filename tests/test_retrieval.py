@@ -6,7 +6,7 @@ from pathlib import Path
 
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
-from beeper_bot.retrieval import detect_query_features, expand_results_with_context, format_find_response, search_archive
+from beeper_bot.retrieval import detect_query_features, expand_results_with_context, format_find_response, search_archive, search_archive_multi
 from beeper_bot.sync import sync_chats
 
 
@@ -133,6 +133,20 @@ class RetrievalTest(unittest.TestCase):
         self.assertIn("Seth @ 2026-05-11T14:22:00Z", expanded[0].context_before[0])
         self.assertNotIn("[context]", expanded[0].text)
         self.assertNotIn("[match]", expanded[0].text)
+
+    def test_search_archive_multi_can_restrict_sender(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+
+        response = search_archive_multi(
+            config,
+            ["Julie"],
+            limit=5,
+            restrict_senders=["Julie"],
+        )
+        self.assertEqual(len(response.results), 1)
+        self.assertEqual(response.results[0].sender_name, "Julie")
+        self.assertEqual(response.results[0].message_id, "msg-2")
 
     def test_search_archive_empty_query(self) -> None:
         config, tmpdir = self._config_with_data()
