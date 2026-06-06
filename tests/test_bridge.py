@@ -58,7 +58,7 @@ class BridgeTest(unittest.TestCase):
                     f'path = "{db_path}"',
                     "",
                     "[llm]",
-                    'base_url = "http://127.0.0.1:8085/v1"',
+                    'base_url = "http://127.0.0.1:8090/v1"',
                     'model = "gemma4-vladimir-26b-local"',
                     "",
                     "[bridge]",

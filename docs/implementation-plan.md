@@ -114,7 +114,7 @@ http_timeout_seconds = 30
 path = "/home/jbfly/.local/state/beeper-bot/archive.sqlite3"
 
 [llm]
-base_url = "http://127.0.0.1:8080/v1"
+base_url = "http://127.0.0.1:8090/v1"
 model = "gemma"
 timeout_seconds = 120
 max_input_snippets = 10
