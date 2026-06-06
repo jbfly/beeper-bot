@@ -44,6 +44,8 @@ class LlmConfig:
     model: str = DEFAULT_LLM_MODEL
     planner_base_url: str = ""
     planner_model: str = ""
+    planner_temperature: float | None = None
+    planner_max_output_tokens: int = 0
     timeout_seconds: int = 120
     max_input_snippets: int = 10
     max_output_tokens: int = 300
@@ -109,6 +111,13 @@ def _float_value(section: dict[str, Any], key: str, default: float) -> float:
     return float(value)
 
 
+def _optional_float_value(section: dict[str, Any], key: str) -> float | None:
+    value = section.get(key)
+    if value in (None, ""):
+        return None
+    return float(value)
+
+
 def _bool_value(section: dict[str, Any], key: str, default: bool) -> bool:
     value = section.get(key, default)
     if isinstance(value, bool):
@@ -164,6 +173,8 @@ def load_config(path: Path | str | None = None) -> AppConfig:
             model=str(llm_raw.get("model", DEFAULT_LLM_MODEL)),
             planner_base_url=str(llm_raw.get("planner_base_url", "") or ""),
             planner_model=str(llm_raw.get("planner_model", "") or ""),
+            planner_temperature=_optional_float_value(llm_raw, "planner_temperature"),
+            planner_max_output_tokens=_int_value(llm_raw, "planner_max_output_tokens", 0),
             timeout_seconds=_int_value(llm_raw, "timeout_seconds", 120),
             max_input_snippets=_int_value(llm_raw, "max_input_snippets", 10),
             max_output_tokens=_int_value(llm_raw, "max_output_tokens", 300),

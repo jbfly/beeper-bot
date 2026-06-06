@@ -103,13 +103,21 @@ class EvalTest(unittest.TestCase):
             suite_path.write_text(json.dumps({
                 "name": "mini",
                 "cases": [
-                    {"id": "case-1", "question": "What address?", "answer_contains_any": ["123 Sample St"]}
+                    {
+                        "id": "case-1",
+                        "question": "What address?",
+                        "answer_contains_any": ["123 Sample St"],
+                        "plan_answer_kind_any": ["fact"],
+                        "plan_preferred_sender_any": ["Seth"],
+                    }
                 ],
             }))
             suite = load_eval_suite(suite_path)
             self.assertEqual(suite.name, "mini")
             self.assertEqual(len(suite.cases), 1)
             self.assertEqual(suite.cases[0].case_id, "case-1")
+            self.assertEqual(suite.cases[0].plan_answer_kind_any, ["fact"])
+            self.assertEqual(suite.cases[0].plan_preferred_sender_any, ["Seth"])
 
     def test_evaluate_case_passes_with_expected_answer(self) -> None:
         config, tmpdir = self._config_with_data()
@@ -118,8 +126,12 @@ class EvalTest(unittest.TestCase):
             case_id="address",
             question="What address did Seth send?",
             answer_contains_any=["123 Sample St"],
+            answer_not_contains=["insufficient"],
             evidence_sender_any=["Seth"],
             evidence_chat_any=["Family logistics"],
+            plan_preferred_sender_any=["Seth"],
+            plan_answer_kind_any=["fact"],
+            plan_time_hint_any=["any"],
         )
         result = evaluate_case(config, case, llm_client=FakeLlmClient("Seth sent 123 Sample St [1]."))
         self.assertTrue(result.passed)
@@ -137,8 +149,11 @@ class EvalTest(unittest.TestCase):
                     "id": "pass-case",
                     "question": "What address did Seth send?",
                     "answer_contains_any": ["123 Sample St"],
+                    "answer_not_contains": ["insufficient"],
                     "evidence_sender_any": ["Seth"],
-                    "evidence_chat_any": ["Family logistics"]
+                    "evidence_chat_any": ["Family logistics"],
+                    "plan_preferred_sender_any": ["Seth"],
+                    "plan_answer_kind_any": ["fact"]
                 },
                 {
                     "id": "info-case",

@@ -74,6 +74,7 @@ class OpenAiCompatLlmClient:
         *,
         base_url: str | None = None,
         model: str | None = None,
+        temperature: float | None = None,
     ) -> str:
         target_base_url = (base_url or config.llm.base_url).strip()
         target_model = (model or config.llm.model).strip()
@@ -81,7 +82,7 @@ class OpenAiCompatLlmClient:
         payload = {
             "model": target_model,
             "messages": messages,
-            "temperature": config.llm.temperature,
+            "temperature": config.llm.temperature if temperature is None else temperature,
             "max_tokens": max_tokens or config.llm.max_output_tokens,
         }
         body = json.dumps(payload).encode("utf-8")
@@ -124,15 +125,18 @@ class OpenAiCompatLlmClient:
 
     def plan_query(self, config: AppConfig, question: str, catalog: SearchCatalog, graph: PersonGraph) -> QueryPlan:
         prompt = build_planner_prompt(question, catalog, graph)
+        planner_max_tokens = config.llm.planner_max_output_tokens or config.llm.max_output_tokens
+        planner_temperature = config.llm.planner_temperature
         raw = self._post_chat(
             config,
             [
                 {"role": "system", "content": "You plan archive retrieval queries. Return strict JSON only."},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=min(400, config.llm.max_output_tokens),
+            max_tokens=min(400, planner_max_tokens),
             base_url=config.llm.planner_base_url or None,
             model=config.llm.planner_model or None,
+            temperature=planner_temperature,
         )
         return parse_query_plan(raw, question)
 

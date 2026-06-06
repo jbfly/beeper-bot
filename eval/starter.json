@@ -11,7 +11,10 @@
       "answer_contains_any": ["how long is your next flight", "welcome home", "Not too bad", "looking awesome"],
       "evidence_sender_any": ["Thomas Wright"],
       "evidence_chat_any": ["Tejanos (and Tom)", "La Familia (+Addy)"],
-      "top_evidence_sender_any": ["Thomas Wright"]
+      "top_evidence_sender_any": ["Thomas Wright"],
+      "plan_people_all": ["Thomas Wright", "Adrienne Peña"],
+      "plan_answer_kind_any": ["last-message"],
+      "plan_time_hint_any": ["recent"]
     },
     {
       "id": "addy_and_i_may18",
@@ -20,7 +23,11 @@
       "notes": "Date-scoped activity recall.",
       "answer_contains_pool": ["Shakar", "Castelo de São Jorge", "Lisbon Cathedral", "massage", "China town", "cathedral"],
       "answer_contains_count": 2,
-      "evidence_chat_any": ["La Familia (+Addy)"]
+      "answer_not_contains": ["insufficient"],
+      "evidence_chat_any": ["La Familia (+Addy)"],
+      "plan_people_any": ["Adrienne Peña"],
+      "plan_answer_kind_any": ["summary"],
+      "plan_time_hint_any": ["any"]
     },
     {
       "id": "anna_store_bottom_sheets",
@@ -28,8 +35,12 @@
       "tags": ["store", "request", "fact"],
       "notes": "Should find the bottom sheets request.",
       "answer_contains_any": ["bottom sheets", "store next door"],
+      "answer_not_contains": ["insufficient"],
       "evidence_sender_any": ["Anna Bonewitz"],
-      "evidence_chat_any": ["Morada dos Manos"]
+      "evidence_chat_any": ["Morada dos Manos"],
+      "plan_people_any": ["Anna Bonewitz"],
+      "plan_answer_kind_any": ["fact"],
+      "plan_time_hint_any": ["recent"]
     },
     {
       "id": "anna_owed_john",
@@ -37,10 +48,14 @@
       "tags": ["money", "fact"],
       "notes": "Known exact amount from SA trip settlement message.",
       "answer_contains_any": ["€138.12", "138.12"],
+      "answer_not_contains": ["insufficient"],
       "evidence_sender_any": ["Thomas Wright"],
       "evidence_chat_any": ["Morada dos Manos"],
       "top_evidence_sender_any": ["Thomas Wright"],
-      "top_evidence_chat_any": ["Morada dos Manos"]
+      "top_evidence_chat_any": ["Morada dos Manos"],
+      "plan_people_any": ["Anna Bonewitz"],
+      "plan_answer_kind_any": ["fact"],
+      "plan_time_hint_any": ["any"]
     },
     {
       "id": "adriana_address",
@@ -48,8 +63,12 @@
       "tags": ["address", "fact"],
       "notes": "Should find the housekeeping address.",
       "answer_contains_any": ["Rua Afonso enes", "n°17", "R/c"],
+      "answer_not_contains": ["insufficient"],
       "evidence_sender_any": ["Adriana"],
-      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"]
+      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"],
+      "plan_preferred_sender_any": ["Adriana"],
+      "plan_answer_kind_any": ["fact"],
+      "plan_time_hint_any": ["any"]
     },
     {
       "id": "rooiels_address",
@@ -57,7 +76,11 @@
       "tags": ["address", "fact"],
       "notes": "Simple exact-address recall from a Thomas message.",
       "answer_contains_any": ["181 Blenna St"],
-      "evidence_sender_any": ["Thomas Wright"]
+      "answer_not_contains": ["insufficient"],
+      "evidence_sender_any": ["Thomas Wright"],
+      "plan_preferred_sender_any": ["Thomas Wright"],
+      "plan_answer_kind_any": ["fact"],
+      "plan_time_hint_any": ["any"]
     },
     {
       "id": "tom_automation_link",
@@ -65,7 +88,11 @@
       "tags": ["url", "fact", "recent"],
       "notes": "URL recall from a recent Tom message.",
       "answer_contains_any": ["https://automations.home.tomanna.uk/", "automations.home.tomanna.uk"],
-      "evidence_sender_any": ["Thomas Wright"]
+      "answer_not_contains": ["insufficient"],
+      "evidence_sender_any": ["Thomas Wright"],
+      "plan_preferred_sender_any": ["Thomas Wright"],
+      "plan_answer_kind_any": ["url"],
+      "plan_time_hint_any": ["recent"]
     },
     {
       "id": "wine_and_olives_amount",
@@ -73,8 +100,12 @@
       "tags": ["money", "fact", "context"],
       "notes": "Tests context handling around a short payment follow-up.",
       "answer_contains_any": ["35,46€", "35.46"],
+      "answer_not_contains": ["insufficient"],
       "evidence_sender_any": ["Adriana"],
-      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"]
+      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"],
+      "plan_preferred_sender_any": ["Adriana"],
+      "plan_answer_kind_any": ["fact"],
+      "plan_time_hint_any": ["any"]
     },
     {
       "id": "velveeta_for_queso",
@@ -82,8 +113,12 @@
       "tags": ["food", "fact"],
       "notes": "Simple semantic fact in group chat.",
       "answer_contains_any": ["queso"],
+      "answer_not_contains": ["insufficient"],
       "evidence_sender_any": ["Anna Bonewitz"],
-      "evidence_chat_any": ["La Familia (+Addy)"]
+      "evidence_chat_any": ["La Familia (+Addy)"],
+      "plan_people_any": ["Anna Bonewitz"],
+      "plan_answer_kind_any": ["fact"],
+      "plan_time_hint_any": ["any"]
     },
     {
       "id": "paying_tom_total",
@@ -93,7 +128,10 @@
       "score_case": false,
       "answer_contains_any": ["8h15", "35,46€", "wine and olives"],
       "evidence_sender_any": ["Thomas Wright", "Adriana"],
-      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"]
+      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"],
+      "plan_preferred_sender_any": ["Thomas Wright"],
+      "plan_answer_kind_any": ["fact"],
+      "plan_time_hint_any": ["any"]
     }
   ]
 }

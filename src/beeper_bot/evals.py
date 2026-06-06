@@ -32,6 +32,12 @@ class EvalCase:
     evidence_chat_any: list[str] = field(default_factory=list)
     top_evidence_sender_any: list[str] = field(default_factory=list)
     top_evidence_chat_any: list[str] = field(default_factory=list)
+    plan_people_any: list[str] = field(default_factory=list)
+    plan_people_all: list[str] = field(default_factory=list)
+    plan_preferred_sender_any: list[str] = field(default_factory=list)
+    plan_preferred_chat_any: list[str] = field(default_factory=list)
+    plan_answer_kind_any: list[str] = field(default_factory=list)
+    plan_time_hint_any: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -114,6 +120,12 @@ def load_eval_suite(path: Path | str) -> EvalSuite:
                 evidence_chat_any=_string_list(item.get("evidence_chat_any")),
                 top_evidence_sender_any=_string_list(item.get("top_evidence_sender_any")),
                 top_evidence_chat_any=_string_list(item.get("top_evidence_chat_any")),
+                plan_people_any=_string_list(item.get("plan_people_any")),
+                plan_people_all=_string_list(item.get("plan_people_all")),
+                plan_preferred_sender_any=_string_list(item.get("plan_preferred_sender_any")),
+                plan_preferred_chat_any=_string_list(item.get("plan_preferred_chat_any")),
+                plan_answer_kind_any=_string_list(item.get("plan_answer_kind_any")),
+                plan_time_hint_any=_string_list(item.get("plan_time_hint_any")),
             )
         )
 
@@ -200,6 +212,55 @@ def _check_case(case: EvalCase, response: AskResponse) -> tuple[dict[str, bool],
         )
         if not checks["top_evidence_chat_any"]:
             failures.append("top evidence chat mismatch: expected one of " + ", ".join(case.top_evidence_chat_any))
+
+    plan = response.plan
+    checks["plan_people_any"] = True
+    if case.plan_people_any:
+        checks["plan_people_any"] = any(
+            any(_contains(value, token) for token in case.plan_people_any)
+            for value in plan.people
+        )
+        if not checks["plan_people_any"]:
+            failures.append("plan people mismatch: expected one of " + ", ".join(case.plan_people_any))
+
+    checks["plan_people_all"] = True
+    if case.plan_people_all:
+        checks["plan_people_all"] = all(
+            any(_contains(value, token) for value in plan.people)
+            for token in case.plan_people_all
+        )
+        if not checks["plan_people_all"]:
+            failures.append("plan people missing required entries: " + ", ".join(case.plan_people_all))
+
+    checks["plan_preferred_sender_any"] = True
+    if case.plan_preferred_sender_any:
+        checks["plan_preferred_sender_any"] = any(
+            any(_contains(value, token) for token in case.plan_preferred_sender_any)
+            for value in plan.preferred_senders
+        )
+        if not checks["plan_preferred_sender_any"]:
+            failures.append("plan preferred sender mismatch: expected one of " + ", ".join(case.plan_preferred_sender_any))
+
+    checks["plan_preferred_chat_any"] = True
+    if case.plan_preferred_chat_any:
+        checks["plan_preferred_chat_any"] = any(
+            any(_contains(value, token) for token in case.plan_preferred_chat_any)
+            for value in plan.preferred_chats
+        )
+        if not checks["plan_preferred_chat_any"]:
+            failures.append("plan preferred chat mismatch: expected one of " + ", ".join(case.plan_preferred_chat_any))
+
+    checks["plan_answer_kind_any"] = True
+    if case.plan_answer_kind_any:
+        checks["plan_answer_kind_any"] = any(_contains(plan.answer_kind, token) for token in case.plan_answer_kind_any)
+        if not checks["plan_answer_kind_any"]:
+            failures.append("plan answer_kind mismatch: expected one of " + ", ".join(case.plan_answer_kind_any))
+
+    checks["plan_time_hint_any"] = True
+    if case.plan_time_hint_any:
+        checks["plan_time_hint_any"] = any(_contains(plan.time_hint, token) for token in case.plan_time_hint_any)
+        if not checks["plan_time_hint_any"]:
+            failures.append("plan time_hint mismatch: expected one of " + ", ".join(case.plan_time_hint_any))
 
     return checks, failures
 
@@ -339,6 +400,11 @@ def format_suite_result(result: EvalSuiteResult) -> str:
         lines.append("")
         lines.append(f"{status} {item.case_id}{tags} ({item.elapsed_ms} ms)")
         lines.append(f"Q: {item.question}")
+        lines.append(
+            "Plan: "
+            f"kind={item.plan['answer_kind']} time={item.plan['time_hint']} "
+            f"people={item.plan['people']} senders={item.plan['preferred_senders']} chats={item.plan['preferred_chats']}"
+        )
         lines.append(f"A: {item.answer}")
         if item.failures:
             for failure in item.failures:
