@@ -1,0 +1,99 @@
+{
+  "name": "starter",
+  "description": "Starter local benchmark suite for retrieval, planning, and evidence-grounded answers.",
+  "cases": [
+    {
+      "id": "tom_to_addy_last",
+      "question": "What was the last thing that Tom said to Addy?",
+      "tags": ["cross-person", "last-message", "shared-chat"],
+      "notes": "Should prefer a Thomas Wright message in a chat shared with Adrienne/Addy.",
+      "answer_contains_any": ["how long is your next flight"],
+      "evidence_sender_any": ["Thomas Wright"],
+      "evidence_chat_any": ["Tejanos (and Tom)"],
+      "top_evidence_sender_any": ["Thomas Wright"],
+      "top_evidence_chat_any": ["Tejanos (and Tom)"]
+    },
+    {
+      "id": "addy_and_i_may18",
+      "question": "What did Addy and I do on May 18th?",
+      "tags": ["date", "activity", "summary"],
+      "notes": "Date-scoped activity recall.",
+      "answer_contains_pool": ["Shakar", "Castelo de São Jorge", "Lisbon Cathedral", "massage", "China town", "cathedral"],
+      "answer_contains_count": 2,
+      "evidence_chat_any": ["La Familia (+Addy)"]
+    },
+    {
+      "id": "anna_store_bottom_sheets",
+      "question": "What things did Anna last ask me to get from the store?",
+      "tags": ["store", "request", "fact"],
+      "notes": "Should find the bottom sheets request.",
+      "answer_contains_any": ["bottom sheets", "store next door"],
+      "evidence_sender_any": ["Anna Bonewitz"],
+      "evidence_chat_any": ["Morada dos Manos"]
+    },
+    {
+      "id": "anna_owed_john",
+      "question": "How much money did Anna owe John?",
+      "tags": ["money", "fact"],
+      "notes": "Known exact amount from SA trip settlement message.",
+      "answer_contains_any": ["€138.12", "138.12"],
+      "evidence_sender_any": ["Thomas Wright"],
+      "evidence_chat_any": ["Morada dos Manos"],
+      "top_evidence_sender_any": ["Thomas Wright"],
+      "top_evidence_chat_any": ["Morada dos Manos"]
+    },
+    {
+      "id": "adriana_address",
+      "question": "What address did Adriana give us?",
+      "tags": ["address", "fact"],
+      "notes": "Should find the housekeeping address.",
+      "answer_contains_any": ["Rua Afonso enes", "n°17", "R/c"],
+      "evidence_sender_any": ["Adriana"],
+      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"]
+    },
+    {
+      "id": "rooiels_address",
+      "question": "What was the Rooiels address Tom sent?",
+      "tags": ["address", "fact"],
+      "notes": "Simple exact-address recall from a Thomas message.",
+      "answer_contains_any": ["181 Blenna St"],
+      "evidence_sender_any": ["Thomas Wright"]
+    },
+    {
+      "id": "tom_automation_link",
+      "question": "What site did Tom say he set up a few days ago?",
+      "tags": ["url", "fact", "recent"],
+      "notes": "URL recall from a recent Tom message.",
+      "answer_contains_any": ["https://automations.home.tomanna.uk/", "automations.home.tomanna.uk"],
+      "evidence_sender_any": ["Thomas Wright"]
+    },
+    {
+      "id": "wine_and_olives_amount",
+      "question": "What amount did Adriana mention for the wine and olives?",
+      "tags": ["money", "fact", "context"],
+      "notes": "Tests context handling around a short payment follow-up.",
+      "answer_contains_any": ["35,46€", "35.46"],
+      "evidence_sender_any": ["Adriana"],
+      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"]
+    },
+    {
+      "id": "velveeta_for_queso",
+      "question": "What did Anna say Velveeta would be good for?",
+      "tags": ["food", "fact"],
+      "notes": "Simple semantic fact in group chat.",
+      "answer_contains_any": ["queso"],
+      "evidence_sender_any": ["Anna Bonewitz"],
+      "evidence_chat_any": ["La Familia (+Addy)"]
+    },
+    {
+      "id": "paying_tom_total",
+      "question": "How much money did I end up paying Tom?",
+      "tags": ["money", "diagnostic", "hard"],
+      "notes": "Currently hard. Keep as a diagnostic until a total can be derived reliably.",
+      "score_case": false,
+      "answer_contains_any": ["8h15", "35,46€", "wine and olives"],
+      "evidence_sender_any": ["Thomas Wright", "Adriana"],
+      "evidence_chat_any": ["Adriana, Anna & Tom Housekeeping"]
+    }
+  ]
+}

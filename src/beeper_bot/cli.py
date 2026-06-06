@@ -9,6 +9,7 @@ from .beeper_api import BeeperApiClient, BeeperApiError
 from .bridge import ControlBridge
 from .config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from .db import SCHEMA_VERSION, collect_runtime_status, init_db_path
+from .evals import DEFAULT_EVAL_SUITE_PATH, format_suite_result, load_eval_suite, run_eval_suite, suite_result_to_dict
 from .llm import LlmError, ask_archive, format_ask_response
 from .people import (load_person_graph, seed_person, add_person_alias, add_person_chat,
                     delete_person, delete_person as remove_person)
@@ -52,6 +53,13 @@ def build_parser() -> argparse.ArgumentParser:
     chats = subparsers.add_parser("chats", help="List available Beeper chats")
     chats.add_argument("--json", action="store_true", help="Print machine-readable output")
     chats.add_argument("--query", help="Filter by title or participant name")
+
+    eval_parser = subparsers.add_parser("eval", help="Run a local benchmark suite")
+    eval_parser.add_argument("--suite", default=str(DEFAULT_EVAL_SUITE_PATH), help=f"Path to eval suite JSON (default: {DEFAULT_EVAL_SUITE_PATH})")
+    eval_parser.add_argument("--json", action="store_true", help="Print machine-readable output")
+    eval_parser.add_argument("--output", help="Write JSON results to this path")
+    eval_parser.add_argument("--case", action="append", dest="case_ids", help="Run one case id; repeatable")
+    eval_parser.add_argument("--tag", action="append", dest="tags", help="Run only cases with this tag; repeatable")
 
     people = subparsers.add_parser("people", help="Manage the person graph")
     people_sub = people.add_subparsers(dest="people_command", required=True)
@@ -237,6 +245,23 @@ def cmd_ask(config_path: Path, question_parts: list[str], limit: int | None, as_
     return 0
 
 
+def cmd_eval(config_path: Path, suite_path: Path, case_ids: list[str] | None, tags: list[str] | None, as_json: bool, output_path: Path | None) -> int:
+    config = load_config(config_path)
+    suite = load_eval_suite(suite_path)
+    result = run_eval_suite(config, suite, case_ids=case_ids, tags=tags)
+    payload = suite_result_to_dict(result)
+
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(format_suite_result(result))
+    return 0
+
+
 def cmd_serve(config_path: Path, once: bool, as_json: bool) -> int:
     config = load_config(config_path)
     bridge = ControlBridge(config)
@@ -349,6 +374,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_ask(config_path, args.question, args.limit, args.json)
         if args.command == "serve":
             return cmd_serve(config_path, args.once, args.json)
+        if args.command == "eval":
+            return cmd_eval(config_path, Path(args.suite).expanduser(), args.case_ids, args.tags, args.json, Path(args.output).expanduser() if args.output else None)
         if args.command == "people":
             return cmd_people(config_path, args)
         if args.command == "chats":
