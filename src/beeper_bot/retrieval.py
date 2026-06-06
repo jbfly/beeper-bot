@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .config import AppConfig
 from .db import open_db
@@ -42,6 +42,8 @@ class SearchResult:
     text: str
     score: float
     match_reasons: list[str]
+    context_before: list[str] = field(default_factory=list)
+    context_after: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -299,54 +301,52 @@ def search_archive(config: AppConfig, query: str, limit: int = 5, date_start: st
 
 
 def expand_results_with_context(config: AppConfig, results: list[SearchResult], window: int = 3) -> list[SearchResult]:
-    if not results:
-        return results
+    if not results or window <= 0:
+        return list(results)
 
     with open_db(config.archive.path) as conn:
         for result in results:
+            anchor = conn.execute(
+                "SELECT sort_key FROM messages WHERE message_id = ?",
+                (result.message_id,),
+            ).fetchone()
+            if anchor is None:
+                continue
+
+            sort_key = int(anchor[0])
             before = conn.execute(
                 """
-                SELECT sender_name, text, timestamp
+                SELECT COALESCE(sender_name, '') AS sender_name, timestamp, COALESCE(text, '') AS text
                 FROM messages
                 WHERE chat_id = ? AND sort_key < ?
                 ORDER BY sort_key DESC
                 LIMIT ?
                 """,
-                (result.chat_id, _result_sort_key(conn, result.message_id), window),
+                (result.chat_id, sort_key, window),
             ).fetchall()
             after = conn.execute(
                 """
-                SELECT sender_name, text, timestamp
+                SELECT COALESCE(sender_name, '') AS sender_name, timestamp, COALESCE(text, '') AS text
                 FROM messages
                 WHERE chat_id = ? AND sort_key > ?
                 ORDER BY sort_key ASC
                 LIMIT ?
                 """,
-                (result.chat_id, _result_sort_key(conn, result.message_id), window),
+                (result.chat_id, sort_key, window),
             ).fetchall()
 
-            lines: list[str] = []
-            for row in reversed(before):
-                sender = row["sender_name"] or "unknown"
-                txt = (row["text"] or "").replace("\n", " ").strip()
-                if txt:
-                    lines.append(f"[context] {sender}: {txt}")
-            lines.append(f"[match] {result.sender_name}: {result.text}")
-            for row in after:
-                sender = row["sender_name"] or "unknown"
-                txt = (row["text"] or "").replace("\n", " ").strip()
-                if txt:
-                    lines.append(f"[context] {sender}: {txt}")
+            result.context_before = [
+                f"{str(row['sender_name'] or 'unknown')} @ {str(row['timestamp'])}: {str(row['text']).replace(chr(10), ' ').strip()}"
+                for row in reversed(before)
+                if str(row['text'] or '').strip()
+            ]
+            result.context_after = [
+                f"{str(row['sender_name'] or 'unknown')} @ {str(row['timestamp'])}: {str(row['text']).replace(chr(10), ' ').strip()}"
+                for row in after
+                if str(row['text'] or '').strip()
+            ]
 
-            if len(lines) > 1:
-                result.text = "\n".join(lines)
-
-    return results
-
-
-def _result_sort_key(conn: sqlite3.Connection, message_id: str) -> int:
-    row = conn.execute("SELECT sort_key FROM messages WHERE message_id = ?", (message_id,)).fetchone()
-    return int(row[0]) if row else 0
+    return list(results)
 
 
 def search_archive_multi(

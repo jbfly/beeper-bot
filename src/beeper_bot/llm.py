@@ -128,16 +128,19 @@ class OpenAiCompatLlmClient:
 def build_evidence_packet(results: list[SearchResult], limit: int) -> list[EvidenceItem]:
     evidence: list[EvidenceItem] = []
     for idx, result in enumerate(results[:limit], start=1):
-        text = result.text.strip()
-        if "[context]" in text or "[match]" in text:
-            lines = text.split("\n")
-            if len(lines) > 12:
-                lines = lines[:12]
-            excerpt = "\n".join(lines)
-        else:
-            excerpt = text.replace("\n", " ").strip()
-            if len(excerpt) > 600:
-                excerpt = excerpt[:597].rstrip() + "..."
+        anchor = result.text.replace("\n", " ").strip()
+        if len(anchor) > 350:
+            anchor = anchor[:347].rstrip() + "..."
+        parts = [anchor]
+        if result.context_before:
+            parts.append("Context before:")
+            parts.extend(f"- {line}" for line in result.context_before[:3])
+        if result.context_after:
+            parts.append("Context after:")
+            parts.extend(f"- {line}" for line in result.context_after[:3])
+        excerpt = "\n".join(parts)
+        if len(excerpt) > 900:
+            excerpt = excerpt[:897].rstrip() + "..."
         evidence.append(
             EvidenceItem(
                 citation_id=f"[{idx}]",
@@ -274,6 +277,8 @@ def build_answer_prompt(question: str, evidence: list[EvidenceItem], person_cont
     return (
         "Answer the question using only the evidence below.\n"
         "Pay close attention to the sender name and chat name on each line.\n"
+        "Each citation refers only to the anchor message line for that evidence item.\n"
+        "Nested context bullets are background only.\n"
         "If the evidence is partial, say what the evidence does support and what remains unclear.\n"
         "Only say the evidence is insufficient when the evidence truly does not support even a partial answer.\n"
         "Cite factual claims with citation ids like [1].\n"
@@ -294,6 +299,8 @@ def build_verification_prompt(answer: str, question: str, evidence: list[Evidenc
     return (
         "Verify the answer below against the evidence.\n"
         "Return a corrected answer that is fully supported by the evidence.\n"
+        "Each citation refers only to the anchor message line for that evidence item.\n"
+        "Nested context bullets are background only.\n"
         "Strip any unsupported claims, names, dates, or facts.\n"
         "If a claim in the original answer is wrong, replace it with what the evidence actually says.\n"
         "Keep the citation ids from the original answer where they are valid.\n"

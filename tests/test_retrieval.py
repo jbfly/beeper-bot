@@ -6,7 +6,7 @@ from pathlib import Path
 
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
-from beeper_bot.retrieval import detect_query_features, format_find_response, search_archive
+from beeper_bot.retrieval import detect_query_features, expand_results_with_context, format_find_response, search_archive
 from beeper_bot.sync import sync_chats
 
 
@@ -119,6 +119,20 @@ class RetrievalTest(unittest.TestCase):
         self.assertIn("Top matches for: alex@example.org", text)
         self.assertIn("Friends", text)
         self.assertIn("alex@example.org", text)
+
+    def test_expand_results_with_context_keeps_message_metadata(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+
+        response = search_archive(config, "503-555-1212")
+        expanded = expand_results_with_context(config, response.results[:1], window=1)
+
+        self.assertEqual([item.message_id for item in expanded], ["msg-2"])
+        self.assertEqual(expanded[0].sender_name, "Julie")
+        self.assertEqual(len(expanded[0].context_before), 1)
+        self.assertIn("Seth @ 2026-05-11T14:22:00Z", expanded[0].context_before[0])
+        self.assertNotIn("[context]", expanded[0].text)
+        self.assertNotIn("[match]", expanded[0].text)
 
     def test_search_archive_empty_query(self) -> None:
         config, tmpdir = self._config_with_data()

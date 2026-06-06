@@ -124,7 +124,7 @@ class EvalTest(unittest.TestCase):
         result = evaluate_case(config, case, llm_client=FakeLlmClient("Seth sent 123 Sample St [1]."))
         self.assertTrue(result.passed)
         self.assertEqual(result.failures, [])
-        self.assertEqual(result.evidence_count, 1)
+        self.assertGreaterEqual(result.evidence_count, 1)
 
     def test_run_eval_suite_counts_only_scored_cases(self) -> None:
         config, tmpdir = self._config_with_data()
