@@ -66,16 +66,26 @@ def _require_loopback_base_url(base_url: str) -> None:
 
 
 class OpenAiCompatLlmClient:
-    def _post_chat(self, config: AppConfig, messages: list[dict[str, str]], max_tokens: int | None = None) -> str:
-        _require_loopback_base_url(config.llm.base_url)
+    def _post_chat(
+        self,
+        config: AppConfig,
+        messages: list[dict[str, str]],
+        max_tokens: int | None = None,
+        *,
+        base_url: str | None = None,
+        model: str | None = None,
+    ) -> str:
+        target_base_url = (base_url or config.llm.base_url).strip()
+        target_model = (model or config.llm.model).strip()
+        _require_loopback_base_url(target_base_url)
         payload = {
-            "model": config.llm.model,
+            "model": target_model,
             "messages": messages,
             "temperature": config.llm.temperature,
             "max_tokens": max_tokens or config.llm.max_output_tokens,
         }
         body = json.dumps(payload).encode("utf-8")
-        url = f"{config.llm.base_url.rstrip('/')}/chat/completions"
+        url = f"{target_base_url.rstrip('/')}/chat/completions"
         req = request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
         try:
             with request.urlopen(req, timeout=config.llm.timeout_seconds) as resp:
@@ -121,6 +131,8 @@ class OpenAiCompatLlmClient:
                 {"role": "user", "content": prompt},
             ],
             max_tokens=min(400, config.llm.max_output_tokens),
+            base_url=config.llm.planner_base_url or None,
+            model=config.llm.planner_model or None,
         )
         return parse_query_plan(raw, question)
 

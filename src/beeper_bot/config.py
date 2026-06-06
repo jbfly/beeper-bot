@@ -42,6 +42,8 @@ class ArchiveConfig:
 class LlmConfig:
     base_url: str = DEFAULT_LLM_BASE_URL
     model: str = DEFAULT_LLM_MODEL
+    planner_base_url: str = ""
+    planner_model: str = ""
     timeout_seconds: int = 120
     max_input_snippets: int = 10
     max_output_tokens: int = 300
@@ -160,6 +162,8 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         llm=LlmConfig(
             base_url=str(llm_raw.get("base_url", DEFAULT_LLM_BASE_URL)),
             model=str(llm_raw.get("model", DEFAULT_LLM_MODEL)),
+            planner_base_url=str(llm_raw.get("planner_base_url", "") or ""),
+            planner_model=str(llm_raw.get("planner_model", "") or ""),
             timeout_seconds=_int_value(llm_raw, "timeout_seconds", 120),
             max_input_snippets=_int_value(llm_raw, "max_input_snippets", 10),
             max_output_tokens=_int_value(llm_raw, "max_output_tokens", 300),
