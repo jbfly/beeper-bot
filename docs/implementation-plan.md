@@ -513,6 +513,14 @@ Track these next experiments after the current span-retrieval patch:
 - benchmark one Qwen candidate that fits the 16 GB GPU well
 - refresh the local `llama.cpp` tree, rebuild, and rerun the model matrix
 
+Add a control-chat memory and facts layer after the current retrieval work stabilizes:
+- keep a bounded recent control-chat turn window for conversational continuity
+- maintain a rolling control-chat summary for older turns
+- store user-approved facts with provenance and timestamps
+- store people, aliases, and relationship facts as structured records
+- support safe memory updates from the control chat, with explicit confirmation where needed
+- include memory-aware evals that test long control-chat threads, fact carry-forward, and context-budget limits
+
 ## 18. First coding step
 
 Start with:
