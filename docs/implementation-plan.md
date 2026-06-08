@@ -506,6 +506,13 @@ Do not block MVP on these items:
 - split desktop/server deployment
 - Wake-on-LAN orchestration
 
+Track these next experiments after the current span-retrieval patch:
+- add deterministic eval mode for model comparisons and regression runs
+- add date-bounded and chat-bounded slice retrieval for day-specific questions
+- add last-meaningful-request logic for shopping and follow-up threads
+- benchmark one Qwen candidate that fits the 16 GB GPU well
+- refresh the local `llama.cpp` tree, rebuild, and rerun the model matrix
+
 ## 18. First coding step
 
 Start with:
