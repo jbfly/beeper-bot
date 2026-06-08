@@ -1,5 +1,16 @@
 {
   "name": "control-memory-diagnostic",
   "description": "Hard or ambiguous control-memory cases tracked without score gating.",
-  "cases": []
+  "cases": [
+    {
+      "id": "ambiguous_memory_write_subject",
+      "question": "Remember that Anna is family.",
+      "tags": ["control-memory", "diagnostic", "memory-write"],
+      "notes": "The bot should not persist vague relationship facts without clarification.",
+      "enabled": false,
+      "score_case": false,
+      "expected_actions": ["ask-clarifying-question"],
+      "context_budget_class": "short"
+    }
+  ]
 }

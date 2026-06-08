@@ -116,6 +116,17 @@ class EvalTest(unittest.TestCase):
                         "answer_contains_any": ["123 Sample St"],
                         "plan_answer_kind_any": ["fact"],
                         "plan_preferred_sender_any": ["Seth"],
+                        "metrics_only": True,
+                        "control_turns": [
+                            {"role": "user", "content": "Remember that Anna is my sister."},
+                            {"role": "assistant", "content": "Okay, I can store that after confirmation."}
+                        ],
+                        "memory_state": {
+                            "facts": [{"subject": "Anna", "predicate": "relationship", "object": "sister"}]
+                        },
+                        "expected_actions": ["confirm-memory-write"],
+                        "expected_sources": ["memory"],
+                        "context_budget_class": "short"
                     }
                 ],
             }))
@@ -125,6 +136,12 @@ class EvalTest(unittest.TestCase):
             self.assertEqual(suite.cases[0].case_id, "case-1")
             self.assertEqual(suite.cases[0].plan_answer_kind_any, ["fact"])
             self.assertEqual(suite.cases[0].plan_preferred_sender_any, ["Seth"])
+            self.assertTrue(suite.cases[0].metrics_only)
+            self.assertEqual(suite.cases[0].control_turns[0]["role"], "user")
+            self.assertEqual(suite.cases[0].memory_state["facts"][0]["object"], "sister")
+            self.assertEqual(suite.cases[0].expected_actions, ["confirm-memory-write"])
+            self.assertEqual(suite.cases[0].expected_sources, ["memory"])
+            self.assertEqual(suite.cases[0].context_budget_class, "short")
 
     def test_evaluate_case_passes_with_expected_answer(self) -> None:
         config, tmpdir = self._config_with_data()
@@ -176,12 +193,18 @@ class EvalTest(unittest.TestCase):
                     "question": "What address did Seth send?",
                     "score_case": False,
                     "answer_contains_any": ["missing"]
+                },
+                {
+                    "id": "metric-case",
+                    "question": "What address did Seth send?",
+                    "metrics_only": True,
+                    "answer_contains_any": ["missing"]
                 }
             ]
         }))
         suite = load_eval_suite(suite_path)
         result = run_eval_suite(config, suite, llm_client=FakeLlmClient("Seth sent 123 Sample St [1]."))
-        self.assertEqual(result.total_cases, 2)
+        self.assertEqual(result.total_cases, 3)
         self.assertEqual(result.scored_cases, 1)
         self.assertEqual(result.passed_cases, 1)
         self.assertEqual(result.failed_cases, 0)
@@ -190,6 +213,7 @@ class EvalTest(unittest.TestCase):
         self.assertIn("Runtime:", text)
         self.assertIn("PASS pass-case", text)
         self.assertIn("INFO info-case", text)
+        self.assertIn("METRIC metric-case", text)
 
 
 if __name__ == "__main__":

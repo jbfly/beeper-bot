@@ -1,5 +1,49 @@
 {
   "name": "context-ladder",
   "description": "Context-budget ladder for recent turns, rolling summaries, and long control-chat threads.",
-  "cases": []
+  "cases": [
+    {
+      "id": "continuity_short_recent_window",
+      "question": "Use the second answer and shorten it.",
+      "tags": ["context-ladder", "continuity"],
+      "notes": "Short-window continuity case. The follow-up should resolve within a bounded recent-turn window.",
+      "enabled": false,
+      "score_case": false,
+      "control_turns": [
+        {"role": "user", "content": "Who sent the Pensão Amor address?"},
+        {"role": "assistant", "content": "Anna forwarded Rua do Alecrim n. 28C 1.ºDto 1200-018 Lisboa [1]."},
+        {"role": "user", "content": "Can you also tell me what chat it came from?"},
+        {"role": "assistant", "content": "It came from Anna Bonewitz [1]."}
+      ],
+      "expected_sources": ["archive", "control-turns"],
+      "context_budget_class": "short"
+    },
+    {
+      "id": "continuity_medium_with_summary",
+      "question": "Okay, now go back to the store question.",
+      "tags": ["context-ladder", "summary"],
+      "notes": "Medium-window case. Earlier turns should be recovered from recent turns plus rolling summary, not by replaying the whole control chat.",
+      "enabled": false,
+      "score_case": false,
+      "memory_state": {
+        "control_summary": "We discussed Adriana's address, then the Pensão Amor forwarding chain, then Anna's latest store request."
+      },
+      "expected_sources": ["archive", "summary"],
+      "context_budget_class": "medium"
+    },
+    {
+      "id": "continuity_stress_long_thread",
+      "question": "What did we conclude about Addy, Anna, and Tom?",
+      "tags": ["context-ladder", "stress"],
+      "notes": "Long-thread stress case. Used to measure degradation point, not for gating yet.",
+      "enabled": false,
+      "score_case": false,
+      "metrics_only": true,
+      "memory_state": {
+        "control_summary": "Long control-chat thread covering aliases, relationships, and retrieval tuning decisions."
+      },
+      "expected_sources": ["memory", "summary", "control-turns"],
+      "context_budget_class": "stress"
+    }
+  ]
 }

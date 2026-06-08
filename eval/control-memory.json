@@ -1,5 +1,54 @@
 {
   "name": "control-memory",
   "description": "Control-chat continuity, structured memory, and safe memory-update cases.",
-  "cases": []
+  "cases": [
+    {
+      "id": "recent_followup_pronoun",
+      "question": "What address did she send?",
+      "tags": ["control-memory", "continuity"],
+      "notes": "Follow-up should resolve 'she' from the recent control-chat window, not from archive-wide heuristics.",
+      "enabled": false,
+      "score_case": false,
+      "control_turns": [
+        {"role": "user", "content": "What address did Adriana send?"},
+        {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."}
+      ],
+      "expected_sources": ["archive", "control-turns"],
+      "context_budget_class": "short",
+      "answer_contains_any": ["Rua Afonso", "Afonso enes"]
+    },
+    {
+      "id": "relationship_fact_lookup",
+      "question": "Who is Anna again?",
+      "tags": ["control-memory", "structured-memory"],
+      "notes": "Relationship fact should come from stored memory, not from archive citations.",
+      "enabled": false,
+      "score_case": false,
+      "memory_state": {
+        "facts": [
+          {
+            "subject": "Anna Bonewitz",
+            "predicate": "relationship_to_user",
+            "object": "sister",
+            "source": "user-approved fact"
+          }
+        ]
+      },
+      "expected_sources": ["memory"],
+      "context_budget_class": "short",
+      "answer_contains_any": ["sister"]
+    },
+    {
+      "id": "alias_add_confirmation",
+      "question": "Remember that Addy is Adrienne Peña.",
+      "tags": ["control-memory", "memory-write"],
+      "notes": "Natural-language memory writes should ask for confirmation unless they are already structured and unambiguous commands.",
+      "enabled": false,
+      "score_case": false,
+      "expected_actions": ["confirm-memory-write", "add-alias"],
+      "expected_sources": ["control-turns"],
+      "context_budget_class": "short",
+      "answer_contains_any": ["confirm", "remember"]
+    }
+  ]
 }

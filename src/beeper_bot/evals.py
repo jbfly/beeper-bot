@@ -21,6 +21,7 @@ class EvalCase:
     notes: str = ""
     enabled: bool = True
     score_case: bool = True
+    metrics_only: bool = False
     min_evidence: int = 1
     require_citation: bool = True
     answer_contains_all: list[str] = field(default_factory=list)
@@ -38,6 +39,11 @@ class EvalCase:
     plan_preferred_chat_any: list[str] = field(default_factory=list)
     plan_answer_kind_any: list[str] = field(default_factory=list)
     plan_time_hint_any: list[str] = field(default_factory=list)
+    control_turns: list[dict[str, Any]] = field(default_factory=list)
+    memory_state: dict[str, Any] = field(default_factory=dict)
+    expected_actions: list[str] = field(default_factory=list)
+    expected_sources: list[str] = field(default_factory=list)
+    context_budget_class: str = ""
 
 
 @dataclass(slots=True)
@@ -55,6 +61,7 @@ class EvalCaseResult:
     notes: str
     enabled: bool
     score_case: bool
+    metrics_only: bool
     passed: bool
     elapsed_ms: int
     checks: dict[str, bool]
@@ -64,6 +71,11 @@ class EvalCaseResult:
     evidence: list[dict[str, Any]]
     retrieval: list[dict[str, Any]]
     plan: dict[str, Any]
+    control_turns: list[dict[str, Any]]
+    memory_state: dict[str, Any]
+    expected_actions: list[str]
+    expected_sources: list[str]
+    context_budget_class: str
 
 
 @dataclass(slots=True)
@@ -83,6 +95,20 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return dict(value)
+
+
+
+def _dict_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
 
 
 def load_eval_suite(path: Path | str) -> EvalSuite:
@@ -110,6 +136,7 @@ def load_eval_suite(path: Path | str) -> EvalSuite:
                 notes=str(item.get("notes") or "").strip(),
                 enabled=bool(item.get("enabled", True)),
                 score_case=bool(item.get("score_case", True)),
+                metrics_only=bool(item.get("metrics_only", False)),
                 min_evidence=int(item.get("min_evidence", 1)),
                 require_citation=bool(item.get("require_citation", True)),
                 answer_contains_all=_string_list(item.get("answer_contains_all")),
@@ -127,6 +154,11 @@ def load_eval_suite(path: Path | str) -> EvalSuite:
                 plan_preferred_chat_any=_string_list(item.get("plan_preferred_chat_any")),
                 plan_answer_kind_any=_string_list(item.get("plan_answer_kind_any")),
                 plan_time_hint_any=_string_list(item.get("plan_time_hint_any")),
+                control_turns=_dict_list(item.get("control_turns")),
+                memory_state=_dict_value(item.get("memory_state")),
+                expected_actions=_string_list(item.get("expected_actions")),
+                expected_sources=_string_list(item.get("expected_sources")),
+                context_budget_class=str(item.get("context_budget_class") or "").strip(),
             )
         )
 
@@ -271,7 +303,7 @@ def evaluate_case(config: AppConfig, case: EvalCase, llm_client: LlmClient | Non
     response = ask_archive(config, case.question, llm_client=llm_client)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     checks, failures = _check_case(case, response)
-    passed = all(checks.values()) if case.score_case and case.enabled else False
+    passed = all(checks.values()) if case.score_case and case.enabled and not case.metrics_only else False
 
     return EvalCaseResult(
         case_id=case.case_id,
@@ -280,6 +312,7 @@ def evaluate_case(config: AppConfig, case: EvalCase, llm_client: LlmClient | Non
         notes=case.notes,
         enabled=case.enabled,
         score_case=case.score_case,
+        metrics_only=case.metrics_only,
         passed=passed,
         elapsed_ms=elapsed_ms,
         checks=checks,
@@ -322,6 +355,11 @@ def evaluate_case(config: AppConfig, case: EvalCase, llm_client: LlmClient | Non
             "answer_kind": response.plan.answer_kind,
             "time_hint": response.plan.time_hint,
         },
+        control_turns=list(case.control_turns),
+        memory_state=dict(case.memory_state),
+        expected_actions=list(case.expected_actions),
+        expected_sources=list(case.expected_sources),
+        context_budget_class=case.context_budget_class,
     )
 
 
@@ -393,7 +431,7 @@ def run_eval_suite(
         results.append(result)
         if case.enabled:
             enabled_cases += 1
-        if case.enabled and case.score_case:
+        if case.enabled and case.score_case and not case.metrics_only:
             scored_cases += 1
             if result.passed:
                 passed_cases += 1
@@ -446,6 +484,8 @@ def format_suite_result(result: EvalSuiteResult) -> str:
     for item in result.results:
         if not item.enabled:
             status = "SKIP"
+        elif item.metrics_only:
+            status = "METRIC"
         elif not item.score_case:
             status = "INFO"
         else:
