@@ -10,7 +10,20 @@ from urllib import error, parse, request
 from .config import AppConfig
 from .people import PersonGraph, load_person_graph
 from .planning import QueryPlan
-from .retrieval import SearchCatalog, SearchResponse, SearchResult, collect_search_catalog, expand_results_with_context, search_archive_multi
+from .retrieval import (
+    ADDRESS_RE,
+    DATE_RE,
+    EMAIL_RE,
+    URL_RE,
+    SearchCatalog,
+    SearchResponse,
+    SearchResult,
+    collect_search_catalog,
+    detect_query_features,
+    expand_results_with_context,
+    expand_results_with_spans,
+    search_archive_multi,
+)
 
 
 CITATION_RE = re.compile(r"\[(\d+)\]")
@@ -141,22 +154,105 @@ class OpenAiCompatLlmClient:
         return parse_query_plan(raw, question)
 
 
-def build_evidence_packet(results: list[SearchResult], limit: int) -> list[EvidenceItem]:
+def _question_tokens(question: str) -> list[str]:
+    return [
+        token.casefold()
+        for token in re.findall(r"[A-Za-zÀ-ÿ0-9'.-]+", question)
+        if len(token) > 2 and token.casefold() not in LOCAL_QUERY_STOPWORDS
+    ]
+
+
+def _message_lines(text: str) -> list[str]:
+    if not text:
+        return []
+    normalized = re.sub(r"(?i)<br\s*/?>", "\n", text)
+    normalized = re.sub(r"(?i)</p>", "\n", normalized)
+    normalized = re.sub(r"(?i)<li>", "- ", normalized)
+    normalized = re.sub(r"(?i)</li>", "\n", normalized)
+    normalized = re.sub(r"<[^>]+>", "", normalized)
+    return [line.strip() for line in normalized.splitlines() if line.strip()]
+
+
+def _best_anchor_excerpt(text: str, question: str, max_chars: int = 700) -> str:
+    lines = _message_lines(text)
+    clean_text = " ".join(lines) if lines else text.replace("\n", " ").strip()
+
+    lowered = question.casefold()
+    tokens = _question_tokens(question)
+    features = detect_query_features(question)
+    best_idx = 0
+    best_score = -1.0
+    for idx, line in enumerate(lines):
+        line_lower = line.casefold()
+        score = 0.0
+        overlap = sum(1 for token in tokens if token in line_lower)
+        score += overlap * 6.0
+        if "grand total" in lowered and "grand total" in line_lower:
+            score += 60.0
+        if "extra total" in lowered and "total extra" in line_lower:
+            score += 60.0
+        if ("check in" in lowered or "check-in" in lowered) and "check in" in line_lower:
+            score += 60.0
+        if "key box" in lowered and "key box" in line_lower:
+            score += 50.0
+        if "proof of payment" in lowered and "proof of payment" in line_lower:
+            score += 50.0
+        if "alarm" in lowered and "alarm" in line_lower:
+            score += 40.0
+        if "outage" in lowered or "power" in lowered:
+            if "outage" in line_lower or "loadshedding" in line_lower:
+                score += 35.0
+        if "app" in lowered and "app" in line_lower:
+            score += 20.0
+        if "email" in features and EMAIL_RE.search(line):
+            score += 35.0
+        if "url" in features and URL_RE.search(line):
+            score += 35.0
+        if "address" in features and ADDRESS_RE.search(line):
+            score += 35.0
+        if "date" in features and DATE_RE.search(line):
+            score += 20.0
+        if "code" in lowered and re.search(r"\b\d{4,8}\b", line):
+            score += 35.0
+        if score > best_score:
+            best_score = score
+            best_idx = idx
+
+    if best_score <= 0:
+        return clean_text[: max_chars - 3].rstrip() + "..."
+
+    selected: list[str] = []
+    for idx in range(max(0, best_idx - 1), min(len(lines), best_idx + 3)):
+        candidate = lines[idx]
+        trial = " ".join(selected + [candidate]).strip()
+        if len(trial) > max_chars and selected:
+            break
+        if len(trial) > max_chars:
+            candidate = candidate[: max_chars - 3].rstrip() + "..."
+            selected.append(candidate)
+            break
+        selected.append(candidate)
+    return " ".join(selected).strip()
+
+
+def build_evidence_packet(results: list[SearchResult], limit: int, question: str = "") -> list[EvidenceItem]:
     evidence: list[EvidenceItem] = []
+    context_limit = 4 if question else 3
+    excerpt_limit = 1400 if question else 900
     for idx, result in enumerate(results[:limit], start=1):
-        anchor = result.text.replace("\n", " ").strip()
-        if len(anchor) > 350:
-            anchor = anchor[:347].rstrip() + "..."
+        anchor = _best_anchor_excerpt(result.text, question) if question else result.text.replace("\n", " ").strip()
+        if len(anchor) > 700:
+            anchor = anchor[:697].rstrip() + "..."
         parts = [anchor]
         if result.context_before:
             parts.append("Context before:")
-            parts.extend(f"- {line}" for line in result.context_before[:3])
+            parts.extend(f"- {line}" for line in result.context_before[:context_limit])
         if result.context_after:
             parts.append("Context after:")
-            parts.extend(f"- {line}" for line in result.context_after[:3])
+            parts.extend(f"- {line}" for line in result.context_after[:context_limit])
         excerpt = "\n".join(parts)
-        if len(excerpt) > 900:
-            excerpt = excerpt[:897].rstrip() + "..."
+        if len(excerpt) > excerpt_limit:
+            excerpt = excerpt[: excerpt_limit - 3].rstrip() + "..."
         evidence.append(
             EvidenceItem(
                 citation_id=f"[{idx}]",
@@ -299,6 +395,7 @@ def build_answer_prompt(question: str, evidence: list[EvidenceItem], person_cont
         "Nested context bullets are background only.\n"
         "If the evidence is partial, say what the evidence does support and what remains unclear.\n"
         "Only say the evidence is insufficient when the evidence truly does not support even a partial answer.\n"
+        "When the evidence contains an explicit total, amount, code, email, address, app name, or URL, quote that explicit value verbatim.\n"
         "Cite factual claims with citation ids like [1].\n"
         "Do not invent names, dates, addresses, or events.\n"
         "Do not output chain-of-thought.\n"
@@ -321,6 +418,7 @@ def build_verification_prompt(answer: str, question: str, evidence: list[Evidenc
         "Nested context bullets are background only.\n"
         "Strip any unsupported claims, names, dates, or facts.\n"
         "If a claim in the original answer is wrong, replace it with what the evidence actually says.\n"
+        "Prefer explicit totals, amounts, codes, emails, addresses, app names, and URLs exactly as written in the evidence.\n"
         "Keep the citation ids from the original answer where they are valid.\n"
         "Do not output chain-of-thought. Return only the corrected answer.\n"
         f"{context_line}\n"
@@ -471,6 +569,7 @@ def _supplement_search_queries(question: str, plan: QueryPlan, resolved_people: 
         add("Rua")
         add("Avenida")
         add("street")
+        add("morada")
 
     if "store" in lowered:
         for person in resolved_people:
@@ -478,10 +577,62 @@ def _supplement_search_queries(question: str, plan: QueryPlan, resolved_people: 
         add("store next door")
         add("bottom sheets")
 
+    if "prescription" in lowered or "prescriptions" in lowered:
+        add("pharmacy")
+        add("vet")
+        add("pills")
+
+    if "check in" in lowered or "check-in" in lowered:
+        add("check in")
+        add("check in starts")
+
+    if "alarm" in lowered:
+        add("alarm app")
+        add("Olarm")
+
+    if "outage" in lowered or "power" in lowered:
+        add("loadshedding")
+        add("power outage app")
+        add("Eskom")
+
+    if "proof of payment" in lowered:
+        add("proof of payment")
+        add("payment email")
+
+    if "extra total" in lowered:
+        add("Total extra")
+    if "grand total" in lowered:
+        add("Grand total")
+
     if compact:
         add(" ".join(compact[: min(4, len(compact))]))
 
     return extras
+
+
+def _needs_slice_context(question: str, plan: QueryPlan) -> bool:
+    lowered = question.casefold()
+    if plan.answer_kind == "summary":
+        return True
+    slice_markers = (
+        "what did",
+        "which",
+        "besides",
+        "after",
+        "full",
+        "list",
+        "pick up",
+        "prescription",
+        "prescriptions",
+        "check in",
+        "check-in",
+        "proof of payment",
+        "power outage",
+        "power outages",
+        "grand total",
+        "extra total",
+    )
+    return any(marker in lowered for marker in slice_markers)
 
 
 def ask_archive(
@@ -502,11 +653,15 @@ def ask_archive(
         first_token = sender_name.casefold().split()[0] if sender_name else ""
         if first_token and first_token in question.casefold() and ("address" in question.casefold() or any(verb in question.casefold() for verb in SPEAKER_VERBS)):
             restrict_senders = [sender_name]
+    slice_mode = _needs_slice_context(question, plan)
     queries = plan.all_queries(question) + _supplement_search_queries(question, plan, resolved_people)
+    retrieval_limit = max(limit or config.llm.max_input_snippets, config.llm.max_input_snippets)
+    if slice_mode:
+        retrieval_limit = max(retrieval_limit * 4, 20)
     retrieval = search_archive_multi(
         config,
         queries,
-        limit=max(limit or config.llm.max_input_snippets, config.llm.max_input_snippets),
+        limit=retrieval_limit,
         preferred_senders=restrict_senders or preferred_senders,
         preferred_chats=restrict_chats or preferred_chats,
         answer_kind=plan.answer_kind,
@@ -514,8 +669,17 @@ def ask_archive(
         restrict_chats=restrict_chats or None,
         restrict_senders=restrict_senders or None,
     )
-    retrieval.results = expand_results_with_context(config, retrieval.results, window=3)
-    evidence = build_evidence_packet(retrieval.results, config.llm.max_input_snippets)
+    if slice_mode:
+        retrieval.results = expand_results_with_spans(
+            config,
+            question,
+            retrieval.results,
+            answer_kind=plan.answer_kind,
+            window=10,
+        )
+    retrieval.results = expand_results_with_context(config, retrieval.results, window=4 if slice_mode else 3)
+    evidence_limit = max(config.llm.max_input_snippets, 8) if slice_mode else config.llm.max_input_snippets
+    evidence = build_evidence_packet(retrieval.results, evidence_limit, question=question)
     if not evidence:
         return AskResponse(
             question=question,

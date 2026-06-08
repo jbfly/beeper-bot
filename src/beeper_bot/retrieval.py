@@ -207,19 +207,17 @@ def _candidate_rows(
     return rows
 
 
-def _score_row(row: sqlite3.Row, query: str, features: list[str]) -> tuple[float, list[str]]:
+def _score_message_fields(
+    text: str,
+    sender_name: str,
+    chat_name: str,
+    query: str,
+    features: list[str],
+) -> tuple[float, list[str]]:
     score = 0.0
     reasons: list[str] = []
-    text = str(row["text"] or "")
-    sender_name = str(row["sender_name"] or "")
-    chat_name = str(row["chat_name"] or "")
     normalized_query = (normalize_text(query) or "").lower()
     normalized_text = (normalize_text(text) or "").lower()
-
-    bm25_score = float(row["bm25_score"])
-    score += max(0.0, 20.0 - max(bm25_score, 0.0))
-    if bm25_score != 0.0:
-        reasons.append("fts")
 
     if normalized_query and normalized_query in normalized_text:
         score += 50.0
@@ -234,7 +232,7 @@ def _score_row(row: sqlite3.Row, query: str, features: list[str]) -> tuple[float
         reasons.append("chat-match")
 
     query_tokens = _query_tokens(query)
-    text_tokens = set(token.lower() for token in TOKEN_RE.findall(f"{sender_name} {chat_name} {text}"))
+    text_tokens = set(token.lower() for token in TOKEN_RE.findall(text))
     strong_overlap = sum(1 for token in query_tokens if token in text_tokens and token not in LOW_SIGNAL_TOKENS)
     weak_overlap = sum(1 for token in query_tokens if token in text_tokens and token in LOW_SIGNAL_TOKENS)
     overlap = strong_overlap + weak_overlap
@@ -258,6 +256,20 @@ def _score_row(row: sqlite3.Row, query: str, features: list[str]) -> tuple[float
     if "date" in features and DATE_RE.search(text):
         score += 20.0
         reasons.append("date-shape")
+
+    return score, reasons
+
+
+def _score_row(row: sqlite3.Row, query: str, features: list[str]) -> tuple[float, list[str]]:
+    text = str(row["text"] or "")
+    sender_name = str(row["sender_name"] or "")
+    chat_name = str(row["chat_name"] or "")
+    score, reasons = _score_message_fields(text, sender_name, chat_name, query, features)
+
+    bm25_score = float(row["bm25_score"])
+    score += max(0.0, 20.0 - max(bm25_score, 0.0))
+    if bm25_score != 0.0:
+        reasons.append("fts")
 
     timestamp = str(row["timestamp"] or "")
     if timestamp[:4].isdigit():
@@ -336,7 +348,12 @@ def search_archive(
         )
 
     if _query_tokens(query):
-        scored = [item for item in scored if "token-overlap" in item.match_reasons or item.match_reasons]
+        content_reasons = {"token-overlap", "exact-substring", "address-shape", "email-shape", "phone-shape", "url-shape", "date-shape", "fts"}
+        distinctive_tokens = [token for token in _query_tokens(query) if token not in LOW_SIGNAL_TOKENS]
+        if distinctive_tokens:
+            scored = [item for item in scored if any(reason in content_reasons for reason in item.match_reasons)]
+        else:
+            scored = [item for item in scored if "token-overlap" in item.match_reasons or item.match_reasons]
     scored.sort(key=lambda item: item.timestamp, reverse=True)
     scored.sort(key=lambda item: item.score, reverse=True)
     return SearchResponse(query=query, results=scored[:limit])
@@ -389,6 +406,98 @@ def expand_results_with_context(config: AppConfig, results: list[SearchResult], 
             ]
 
     return list(results)
+
+
+def _sort_results(results: list[SearchResult], answer_kind: str) -> list[SearchResult]:
+    if answer_kind == "last-message":
+        results.sort(key=lambda item: item.score, reverse=True)
+        results.sort(key=lambda item: item.timestamp, reverse=True)
+    else:
+        results.sort(key=lambda item: item.timestamp, reverse=True)
+        results.sort(key=lambda item: item.score, reverse=True)
+    return results
+
+
+def expand_results_with_spans(
+    config: AppConfig,
+    query: str,
+    results: list[SearchResult],
+    *,
+    answer_kind: str = "fact",
+    window: int = 8,
+    seed_limit: int = 4,
+) -> list[SearchResult]:
+    if not results or window <= 0:
+        return list(results)
+
+    features = detect_query_features(query)
+    merged: dict[str, SearchResult] = {item.message_id: item for item in results}
+
+    with open_db(config.archive.path) as conn:
+        for seed in results[:seed_limit]:
+            anchor = conn.execute(
+                "SELECT sort_key FROM messages WHERE message_id = ?",
+                (seed.message_id,),
+            ).fetchone()
+            if anchor is None:
+                continue
+
+            sort_key = int(anchor[0])
+            rows = conn.execute(
+                """
+                SELECT
+                    m.message_id,
+                    m.chat_id,
+                    c.name AS chat_name,
+                    COALESCE(m.sender_name, '') AS sender_name,
+                    m.timestamp,
+                    m.sort_key,
+                    COALESCE(m.text, '') AS text
+                FROM messages AS m
+                JOIN chats AS c ON c.chat_id = m.chat_id
+                WHERE m.chat_id = ?
+                  AND m.sort_key BETWEEN ? AND ?
+                ORDER BY m.sort_key ASC
+                """,
+                (seed.chat_id, sort_key - window, sort_key + window),
+            ).fetchall()
+
+            for row in rows:
+                text = str(row["text"] or "").strip()
+                if not text:
+                    continue
+
+                message_id = str(row["message_id"])
+                distance = abs(int(row["sort_key"]) - sort_key)
+                field_score, field_reasons = _score_message_fields(
+                    text,
+                    str(row["sender_name"] or ""),
+                    str(row["chat_name"] or ""),
+                    query,
+                    features,
+                )
+                same_sender = str(row["sender_name"] or "").casefold() == seed.sender_name.casefold()
+                if message_id != seed.message_id and field_score <= 0 and distance > 3 and not same_sender:
+                    continue
+
+                score = max(seed.score * 0.35, 0.0) + field_score + max(0.0, 18.0 - (distance * 2.0))
+                reasons = sorted(set(field_reasons + ["span-nearby"]))
+                current = merged.get(message_id)
+                if current is None or score > current.score:
+                    merged[message_id] = SearchResult(
+                        message_id=message_id,
+                        chat_id=str(row["chat_id"]),
+                        chat_name=str(row["chat_name"]),
+                        sender_name=str(row["sender_name"]),
+                        timestamp=str(row["timestamp"]),
+                        text=text,
+                        score=score,
+                        match_reasons=reasons,
+                    )
+                elif "span-nearby" not in current.match_reasons:
+                    current.match_reasons = sorted(set(current.match_reasons + reasons))
+
+    return _sort_results(list(merged.values()), answer_kind)
 
 
 def search_archive_multi(
@@ -461,13 +570,7 @@ def search_archive_multi(
                 current.score += 2.0
                 current.match_reasons = sorted(set(current.match_reasons + reasons + ["multi-query"] ))
 
-    results = list(merged.values())
-    if answer_kind == "last-message":
-        results.sort(key=lambda item: item.score, reverse=True)
-        results.sort(key=lambda item: item.timestamp, reverse=True)
-    else:
-        results.sort(key=lambda item: item.timestamp, reverse=True)
-        results.sort(key=lambda item: item.score, reverse=True)
+    results = _sort_results(list(merged.values()), answer_kind)
     return SearchResponse(query=" | ".join(queries), results=results[:limit])
 
 

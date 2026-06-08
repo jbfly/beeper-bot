@@ -115,6 +115,33 @@ class LlmTest(unittest.TestCase):
         self.assertIn("Question:\nWhat address?", prompt)
         self.assertIn("[1] [Family logistics]", prompt)
 
+    def test_build_evidence_packet_prefers_relevant_line_in_long_message(self) -> None:
+        long_text = (
+            "Welcome to the house.<br><br>"
+            "Keys will be in the key box by the front door.<br><br>"
+            "Check in starts from 2pm onwards.<br><br>"
+            "Please send proof of payment to 181blenna@gmail.com before arrival."
+        )
+        evidence = build_evidence_packet(
+            [
+                type("R", (), {
+                    "message_id": "msg-long",
+                    "chat_id": "chat-a",
+                    "chat_name": "Family logistics",
+                    "sender_name": "Seth",
+                    "timestamp": "2026-05-11T14:22:00Z",
+                    "text": long_text,
+                    "score": 10.0,
+                    "context_before": [],
+                    "context_after": [],
+                })()
+            ],
+            1,
+            question="What email did the note say to send proof of payment to?",
+        )
+        self.assertIn("181blenna@gmail.com", evidence[0].excerpt)
+        self.assertNotIn("Welcome to the house.", evidence[0].excerpt)
+
     def test_format_ask_response_appends_sources(self) -> None:
         response = AskResponse(
             question="What address?",

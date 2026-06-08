@@ -6,7 +6,14 @@ from pathlib import Path
 
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
-from beeper_bot.retrieval import detect_query_features, expand_results_with_context, format_find_response, search_archive, search_archive_multi
+from beeper_bot.retrieval import (
+    detect_query_features,
+    expand_results_with_context,
+    expand_results_with_spans,
+    format_find_response,
+    search_archive,
+    search_archive_multi,
+)
 from beeper_bot.sync import sync_chats
 
 
@@ -69,6 +76,15 @@ class RetrievalTest(unittest.TestCase):
                         "senderName": "Julie",
                         "type": "TEXT",
                         "text": "Call me at 503-555-1212 tomorrow.",
+                    },
+                    {
+                        "id": "msg-4",
+                        "sortKey": "3",
+                        "timestamp": "2026-05-12T09:05:00Z",
+                        "senderID": "u1",
+                        "senderName": "Seth",
+                        "type": "TEXT",
+                        "text": "The key box code is 56890 and check in starts from 2pm onwards.",
                     },
                 ],
                 "chat-b": [
@@ -147,6 +163,17 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(len(response.results), 1)
         self.assertEqual(response.results[0].sender_name, "Julie")
         self.assertEqual(response.results[0].message_id, "msg-2")
+
+    def test_expand_results_with_spans_adds_nearby_messages(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+
+        response = search_archive(config, "503-555-1212")
+        expanded = expand_results_with_spans(config, "What was the key box code?", response.results[:1], window=2)
+
+        self.assertTrue(any(item.message_id == "msg-4" for item in expanded))
+        msg4 = next(item for item in expanded if item.message_id == "msg-4")
+        self.assertIn("span-nearby", msg4.match_reasons)
 
     def test_search_archive_empty_query(self) -> None:
         config, tmpdir = self._config_with_data()
