@@ -238,11 +238,18 @@ Prioritize models that either:
 - may beat Gemma on archive and slice tasks, or
 - come close while leaving more headroom for control-chat memory
 
-Current likely directions:
-- Mistral Nemo 12B Instruct
-- Qwen3 14B
-- one higher-fidelity 14B quant if it still fits comfortably
-- one stretch candidate only if the runtime budget remains sane
+Current shortlist for the first prescreen pass:
+- Phi-4 Q5_K_M
+- Mistral Nemo 12B Instruct Q5_K_M
+- Qwen3 14B Q5_K_M
+- Qwen3 14B Q6_K
+- optional headroom baseline: Gemma-3n E4B Q8_0
+- optional wildcard later: GLM-4.5 Air, only if the runtime path looks clean
+
+Reason:
+- all primary candidates fit the 16 GB GPU more comfortably than the current Gemma 26B setup
+- all primary candidates leave room for larger control-chat working sets
+- none of the primary candidates are obvious barely-fits experiments
 
 Avoid spending early time on:
 - coder models
