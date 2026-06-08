@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +75,7 @@ class EvalSuiteResult:
     scored_cases: int
     passed_cases: int
     failed_cases: int
+    runtime: dict[str, Any]
     results: list[EvalCaseResult]
 
 
@@ -324,6 +325,49 @@ def evaluate_case(config: AppConfig, case: EvalCase, llm_client: LlmClient | Non
     )
 
 
+def configure_eval_run(
+    config: AppConfig,
+    *,
+    deterministic: bool = False,
+    temperature: float | None = None,
+    planner_temperature: float | None = None,
+) -> AppConfig:
+    llm = config.llm
+    answer_temperature = temperature
+    selected_planner_temperature = planner_temperature
+
+    if deterministic:
+        if answer_temperature is None:
+            answer_temperature = 0.0
+        if selected_planner_temperature is None:
+            selected_planner_temperature = 0.0
+
+    if answer_temperature is None and selected_planner_temperature is None:
+        return config
+
+    return replace(
+        config,
+        llm=replace(
+            llm,
+            temperature=llm.temperature if answer_temperature is None else answer_temperature,
+            planner_temperature=llm.planner_temperature if selected_planner_temperature is None else selected_planner_temperature,
+        ),
+    )
+
+
+
+def _eval_runtime_payload(config: AppConfig) -> dict[str, Any]:
+    return {
+        "model": config.llm.model,
+        "base_url": config.llm.base_url,
+        "temperature": config.llm.temperature,
+        "planner_temperature": config.llm.planner_temperature,
+        "max_output_tokens": config.llm.max_output_tokens,
+        "planner_max_output_tokens": config.llm.planner_max_output_tokens,
+    }
+
+
+
 def run_eval_suite(
     config: AppConfig,
     suite: EvalSuite,
@@ -364,6 +408,7 @@ def run_eval_suite(
         scored_cases=scored_cases,
         passed_cases=passed_cases,
         failed_cases=failed_cases,
+        runtime=_eval_runtime_payload(config),
         results=results,
     )
 
@@ -377,6 +422,7 @@ def suite_result_to_dict(result: EvalSuiteResult) -> dict[str, Any]:
         "scored_cases": result.scored_cases,
         "passed_cases": result.passed_cases,
         "failed_cases": result.failed_cases,
+        "runtime": result.runtime,
         "results": [asdict(item) for item in result.results],
     }
 
@@ -388,6 +434,14 @@ def format_suite_result(result: EvalSuiteResult) -> str:
     ]
     if result.description:
         lines.insert(1, result.description)
+
+    if result.runtime:
+        lines.append(
+            "Runtime: "
+            f"model={result.runtime.get('model')} "
+            f"temperature={result.runtime.get('temperature')} "
+            f"planner_temperature={result.runtime.get('planner_temperature')}"
+        )
 
     for item in result.results:
         if not item.enabled:

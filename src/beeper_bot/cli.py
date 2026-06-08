@@ -9,7 +9,14 @@ from .beeper_api import BeeperApiClient, BeeperApiError
 from .bridge import ControlBridge
 from .config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from .db import SCHEMA_VERSION, collect_runtime_status, init_db_path
-from .evals import DEFAULT_EVAL_SUITE_PATH, format_suite_result, load_eval_suite, run_eval_suite, suite_result_to_dict
+from .evals import (
+    DEFAULT_EVAL_SUITE_PATH,
+    configure_eval_run,
+    format_suite_result,
+    load_eval_suite,
+    run_eval_suite,
+    suite_result_to_dict,
+)
 from .llm import LlmError, ask_archive, format_ask_response
 from .people import (load_person_graph, seed_person, add_person_alias, add_person_chat,
                     delete_person, delete_person as remove_person)
@@ -60,6 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--output", help="Write JSON results to this path")
     eval_parser.add_argument("--case", action="append", dest="case_ids", help="Run one case id; repeatable")
     eval_parser.add_argument("--tag", action="append", dest="tags", help="Run only cases with this tag; repeatable")
+    eval_parser.add_argument("--deterministic", action="store_true", help="Force deterministic eval sampling defaults")
+    eval_parser.add_argument("--temperature", type=float, help="Override answer temperature for this eval run")
+    eval_parser.add_argument("--planner-temperature", type=float, help="Override planner temperature for this eval run")
 
     people = subparsers.add_parser("people", help="Manage the person graph")
     people_sub = people.add_subparsers(dest="people_command", required=True)
@@ -245,8 +255,24 @@ def cmd_ask(config_path: Path, question_parts: list[str], limit: int | None, as_
     return 0
 
 
-def cmd_eval(config_path: Path, suite_path: Path, case_ids: list[str] | None, tags: list[str] | None, as_json: bool, output_path: Path | None) -> int:
+def cmd_eval(
+    config_path: Path,
+    suite_path: Path,
+    case_ids: list[str] | None,
+    tags: list[str] | None,
+    as_json: bool,
+    output_path: Path | None,
+    deterministic: bool,
+    temperature: float | None,
+    planner_temperature: float | None,
+) -> int:
     config = load_config(config_path)
+    config = configure_eval_run(
+        config,
+        deterministic=deterministic,
+        temperature=temperature,
+        planner_temperature=planner_temperature,
+    )
     suite = load_eval_suite(suite_path)
     result = run_eval_suite(config, suite, case_ids=case_ids, tags=tags)
     payload = suite_result_to_dict(result)
@@ -375,7 +401,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "serve":
             return cmd_serve(config_path, args.once, args.json)
         if args.command == "eval":
-            return cmd_eval(config_path, Path(args.suite).expanduser(), args.case_ids, args.tags, args.json, Path(args.output).expanduser() if args.output else None)
+            return cmd_eval(
+                config_path,
+                Path(args.suite).expanduser(),
+                args.case_ids,
+                args.tags,
+                args.json,
+                Path(args.output).expanduser() if args.output else None,
+                args.deterministic,
+                args.temperature,
+                args.planner_temperature,
+            )
         if args.command == "people":
             return cmd_people(config_path, args)
         if args.command == "chats":

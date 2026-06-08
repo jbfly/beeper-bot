@@ -1,0 +1,5 @@
+{
+  "name": "control-memory-diagnostic",
+  "description": "Hard or ambiguous control-memory cases tracked without score gating.",
+  "cases": []
+}

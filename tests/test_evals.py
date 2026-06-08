@@ -7,7 +7,14 @@ from pathlib import Path
 
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
-from beeper_bot.evals import EvalCase, evaluate_case, format_suite_result, load_eval_suite, run_eval_suite
+from beeper_bot.evals import (
+    EvalCase,
+    configure_eval_run,
+    evaluate_case,
+    format_suite_result,
+    load_eval_suite,
+    run_eval_suite,
+)
 from beeper_bot.llm import EvidenceItem
 from beeper_bot.planning import QueryPlan
 from beeper_bot.sync import sync_chats
@@ -138,6 +145,15 @@ class EvalTest(unittest.TestCase):
         self.assertEqual(result.failures, [])
         self.assertGreaterEqual(result.evidence_count, 1)
 
+    def test_configure_eval_run_can_force_deterministic_sampling(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        self.assertNotEqual(config.llm.temperature, 0.0)
+        configured = configure_eval_run(config, deterministic=True)
+        self.assertEqual(configured.llm.temperature, 0.0)
+        self.assertEqual(configured.llm.planner_temperature, 0.0)
+        self.assertEqual(config.llm.temperature, 0.1)
+
     def test_run_eval_suite_counts_only_scored_cases(self) -> None:
         config, tmpdir = self._config_with_data()
         self.addCleanup(tmpdir.cleanup)
@@ -169,7 +185,9 @@ class EvalTest(unittest.TestCase):
         self.assertEqual(result.scored_cases, 1)
         self.assertEqual(result.passed_cases, 1)
         self.assertEqual(result.failed_cases, 0)
+        self.assertIn("temperature", result.runtime)
         text = format_suite_result(result)
+        self.assertIn("Runtime:", text)
         self.assertIn("PASS pass-case", text)
         self.assertIn("INFO info-case", text)
 

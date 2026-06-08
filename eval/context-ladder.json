@@ -1,0 +1,5 @@
+{
+  "name": "context-ladder",
+  "description": "Context-budget ladder for recent turns, rolling summaries, and long control-chat threads.",
+  "cases": []
+}
