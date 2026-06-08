@@ -1,0 +1,641 @@
+{
+  "name": "core",
+  "description": "Broader local benchmark suite for retrieval, planning, request resolution, and evidence-grounded answers.",
+  "cases": [
+    {
+      "id": "addy_and_i_may18",
+      "question": "What did Addy and I do on May 18th?",
+      "tags": [
+        "date",
+        "activity",
+        "summary"
+      ],
+      "notes": "Date-scoped activity recall.",
+      "answer_contains_pool": [
+        "Shakar",
+        "Castelo de São Jorge",
+        "Lisbon Cathedral",
+        "massage",
+        "China town",
+        "cathedral"
+      ],
+      "answer_contains_count": 2,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_chat_any": [
+        "La Familia (+Addy)"
+      ],
+      "plan_people_any": [
+        "Adrienne Peña"
+      ],
+      "plan_answer_kind_any": [
+        "summary"
+      ],
+      "plan_time_hint_any": [
+        "any"
+      ]
+    },
+    {
+      "id": "anna_store_bottom_sheets",
+      "question": "What things did Anna last ask me to get from the store?",
+      "tags": [
+        "store",
+        "request",
+        "fact"
+      ],
+      "notes": "Should find the bottom sheets request.",
+      "answer_contains_any": [
+        "bottom sheets",
+        "store next door"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ],
+      "plan_people_any": [
+        "Anna Bonewitz"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ],
+      "plan_time_hint_any": [
+        "recent"
+      ]
+    },
+    {
+      "id": "anna_owed_john",
+      "question": "How much money did Anna owe John?",
+      "tags": [
+        "money",
+        "fact"
+      ],
+      "notes": "Known exact amount from SA trip settlement message.",
+      "answer_contains_any": [
+        "€138.12",
+        "138.12"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ],
+      "top_evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "top_evidence_chat_any": [
+        "Morada dos Manos"
+      ],
+      "plan_people_any": [
+        "Anna Bonewitz"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ],
+      "plan_time_hint_any": [
+        "any"
+      ]
+    },
+    {
+      "id": "adriana_address",
+      "question": "What address did Adriana give us?",
+      "tags": [
+        "address",
+        "fact"
+      ],
+      "notes": "Should find the housekeeping address.",
+      "answer_contains_any": [
+        "Rua Afonso enes",
+        "n°17",
+        "R/c"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Adriana"
+      ],
+      "evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ],
+      "plan_preferred_sender_any": [
+        "Adriana"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ],
+      "plan_time_hint_any": [
+        "any"
+      ]
+    },
+    {
+      "id": "rooiels_address",
+      "question": "What was the Rooiels address Tom sent?",
+      "tags": [
+        "address",
+        "fact"
+      ],
+      "notes": "Simple exact-address recall from a Thomas message.",
+      "answer_contains_any": [
+        "181 Blenna St"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "plan_preferred_sender_any": [
+        "Thomas Wright"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ],
+      "plan_time_hint_any": [
+        "any"
+      ]
+    },
+    {
+      "id": "tom_automation_link",
+      "question": "What site did Tom say he set up a few days ago?",
+      "tags": [
+        "url",
+        "fact",
+        "recent"
+      ],
+      "notes": "URL recall from a recent Tom message.",
+      "answer_contains_any": [
+        "https://automations.home.tomanna.uk/",
+        "automations.home.tomanna.uk"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "plan_preferred_sender_any": [
+        "Thomas Wright"
+      ],
+      "plan_answer_kind_any": [
+        "url"
+      ],
+      "plan_time_hint_any": [
+        "recent"
+      ]
+    },
+    {
+      "id": "wine_and_olives_amount",
+      "question": "What amount did Adriana mention for the wine and olives?",
+      "tags": [
+        "money",
+        "fact",
+        "context"
+      ],
+      "notes": "Tests context handling around a short payment follow-up.",
+      "answer_contains_any": [
+        "35,46€",
+        "35.46"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Adriana"
+      ],
+      "evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ],
+      "plan_preferred_sender_any": [
+        "Adriana"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ],
+      "plan_time_hint_any": [
+        "any"
+      ]
+    },
+    {
+      "id": "velveeta_for_queso",
+      "question": "What did Anna say Velveeta would be good for?",
+      "tags": [
+        "food",
+        "fact"
+      ],
+      "notes": "Simple semantic fact in group chat.",
+      "answer_contains_any": [
+        "queso"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "La Familia (+Addy)"
+      ],
+      "plan_people_any": [
+        "Anna Bonewitz"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ],
+      "plan_time_hint_any": [
+        "any"
+      ]
+    },
+    {
+      "id": "addy_porto_lodging_address",
+      "question": "What Porto address did Addy send for Malmerendas Boutique Lodging?",
+      "tags": [
+        "address",
+        "travel",
+        "fact"
+      ],
+      "notes": "Exact lodging address from an Adrienne message.",
+      "answer_contains_pool": [
+        "Rua Dr. Alves da Veiga",
+        "186",
+        "4000-072",
+        "Porto"
+      ],
+      "answer_contains_count": 3,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Adrienne Peña"
+      ],
+      "evidence_chat_any": [
+        "Adrienne Peña"
+      ],
+      "top_evidence_sender_any": [
+        "Adrienne Peña"
+      ]
+    },
+    {
+      "id": "pensao_amor_address",
+      "question": "What address was sent for Pensão Amor?",
+      "tags": [
+        "address",
+        "business",
+        "fact"
+      ],
+      "notes": "Forwarded business address with Portuguese formatting.",
+      "answer_contains_pool": [
+        "Rua do Alecrim",
+        "28C",
+        "1200-018 Lisboa",
+        "Pensão Amor"
+      ],
+      "answer_contains_count": 3,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Anna Bonewitz"
+      ],
+      "top_evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "top_evidence_chat_any": [
+        "Anna Bonewitz"
+      ]
+    },
+    {
+      "id": "rooiels_key_box_code",
+      "question": "What was the Rooiels key box code?",
+      "tags": [
+        "travel",
+        "logistics",
+        "code",
+        "fact"
+      ],
+      "notes": "Code recall from a forwarded host logistics note.",
+      "answer_contains_any": [
+        "56890"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ],
+      "top_evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "top_evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    },
+    {
+      "id": "structurizr_containers_link",
+      "question": "What site did Tom send for the Structurizr containers diagram?",
+      "tags": [
+        "url",
+        "tech",
+        "fact"
+      ],
+      "notes": "Direct tech URL recall from a Thomas message.",
+      "answer_contains_any": [
+        "https://structurizr.home.tomanna.uk/workspace/7/diagrams#containers",
+        "structurizr.home.tomanna.uk"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Thomas Wright"
+      ],
+      "top_evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "top_evidence_chat_any": [
+        "Thomas Wright"
+      ],
+      "plan_preferred_sender_any": [
+        "Thomas Wright"
+      ],
+      "plan_answer_kind_any": [
+        "url"
+      ]
+    },
+    {
+      "id": "requests_tomanna_site",
+      "question": "What site did Tom say you can use to request movies or TV shows?",
+      "tags": [
+        "url",
+        "media",
+        "fact"
+      ],
+      "notes": "Direct URL recall from a family chat message.",
+      "answer_contains_any": [
+        "https://requests.tomanna.uk/",
+        "requests.tomanna.uk"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "La Familia (+Addy)"
+      ],
+      "top_evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "top_evidence_chat_any": [
+        "La Familia (+Addy)"
+      ],
+      "plan_preferred_sender_any": [
+        "Thomas Wright"
+      ],
+      "plan_answer_kind_any": [
+        "url"
+      ]
+    },
+    {
+      "id": "mongolian_beef_dish",
+      "question": "What dish did Tom say he was making when he asked for rice and cornflour?",
+      "tags": [
+        "food",
+        "request",
+        "fact"
+      ],
+      "notes": "Links a shopping request to the dish mentioned right after it.",
+      "answer_contains_any": [
+        "Mongolian beef"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ],
+      "top_evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "top_evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ],
+      "plan_preferred_sender_any": [
+        "Thomas Wright"
+      ]
+    },
+    {
+      "id": "breakfast_tacos_triple_sec",
+      "question": "What did Anna ask for besides eggs when they were planning breakfast tacos?",
+      "tags": [
+        "food",
+        "request",
+        "context"
+      ],
+      "notes": "Requires following a short request thread in one chat window.",
+      "answer_contains_any": [
+        "triple sec"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ],
+      "top_evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "top_evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ],
+      "plan_people_any": [
+        "Anna Bonewitz"
+      ]
+    },
+    {
+      "id": "anna_tom_true_crime_may31",
+      "question": "What were Anna and Tom watching on May 31?",
+      "tags": [
+        "date",
+        "activity",
+        "fact"
+      ],
+      "notes": "Date-bound household status question.",
+      "answer_contains_any": [
+        "true crime"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ],
+      "top_evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "top_evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ],
+      "plan_people_all": [
+        "Anna Bonewitz",
+        "Thomas Wright"
+      ]
+    },
+    {
+      "id": "adriana_tuesday_food_cost",
+      "question": "What amount did Adriana say the food cost on Tuesday when she made 5h20?",
+      "tags": [
+        "money",
+        "date",
+        "fact"
+      ],
+      "notes": "Tests date cue plus amount extraction from housekeeping thread.",
+      "answer_contains_any": [
+        "11,16€",
+        "11.16"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Adriana"
+      ],
+      "evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ],
+      "top_evidence_sender_any": [
+        "Adriana"
+      ],
+      "top_evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ],
+      "plan_preferred_sender_any": [
+        "Adriana"
+      ]
+    },
+    {
+      "id": "tom_essential_milks",
+      "question": "What did Tom say were the only essential items on the shopping list that day?",
+      "tags": [
+        "store",
+        "request",
+        "fact"
+      ],
+      "notes": "Short thread where only one item class is marked essential.",
+      "answer_contains_any": [
+        "milks",
+        "milk"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ],
+      "top_evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "top_evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ],
+      "plan_preferred_sender_any": [
+        "Thomas Wright"
+      ]
+    },
+    {
+      "id": "tom_amazon_budget_automation",
+      "question": "What did Tom say the next automation would do after the Windmill site?",
+      "tags": [
+        "tech",
+        "automation",
+        "summary"
+      ],
+      "notes": "Two nearby tech messages in one direct chat.",
+      "answer_contains_pool": [
+        "amazon purchases",
+        "budget",
+        "categorise",
+        "categorize"
+      ],
+      "answer_contains_count": 2,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Thomas Wright"
+      ],
+      "plan_preferred_sender_any": [
+        "Thomas Wright"
+      ]
+    },
+    {
+      "id": "frank_vet_vs_pharmacy",
+      "question": "Which of Frank's medicines did Tom say were from the vet, and which were from the pharmacy?",
+      "tags": [
+        "prescriptions",
+        "housekeeping",
+        "summary"
+      ],
+      "notes": "Two-class relation answer from one follow-up message.",
+      "answer_contains_pool": [
+        "cardisure",
+        "cardalis",
+        "vet",
+        "pharmacy"
+      ],
+      "answer_contains_count": 4,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ],
+      "top_evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "top_evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ],
+      "plan_preferred_sender_any": [
+        "Thomas Wright"
+      ]
+    }
+  ]
+}

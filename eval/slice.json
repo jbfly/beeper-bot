@@ -1,0 +1,335 @@
+{
+  "name": "slice",
+  "description": "Track A suite for bounded-span retrieval and local conversation-slice reasoning.",
+  "cases": [
+    {
+      "id": "addy_and_i_may18",
+      "question": "What did Addy and I do on May 18th?",
+      "tags": [
+        "date",
+        "activity",
+        "summary",
+        "slice"
+      ],
+      "answer_contains_pool": [
+        "Shakar",
+        "Castelo de São Jorge",
+        "Lisbon Cathedral",
+        "massage",
+        "China town",
+        "cathedral"
+      ],
+      "answer_contains_count": 2,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_chat_any": [
+        "La Familia (+Addy)"
+      ],
+      "plan_people_any": [
+        "Adrienne Peña"
+      ],
+      "plan_answer_kind_any": [
+        "summary"
+      ]
+    },
+    {
+      "id": "anna_store_bottom_sheets",
+      "question": "What things did Anna last ask me to get from the store?",
+      "tags": [
+        "store",
+        "request",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "bottom sheets",
+        "store next door"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    },
+    {
+      "id": "mongolian_beef_dish",
+      "question": "What dish did Tom say he was making when he asked for rice and cornflour?",
+      "tags": [
+        "food",
+        "request",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "Mongolian beef"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ]
+    },
+    {
+      "id": "breakfast_tacos_triple_sec",
+      "question": "What did Anna ask for besides eggs when they were planning breakfast tacos?",
+      "tags": [
+        "food",
+        "request",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "triple sec"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ]
+    },
+    {
+      "id": "tom_essential_milks",
+      "question": "What did Tom say were the only essential items on the shopping list that day?",
+      "tags": [
+        "store",
+        "request",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "milks",
+        "milk"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Tejanos (and Tom)"
+      ]
+    },
+    {
+      "id": "frank_vet_vs_pharmacy",
+      "question": "Which of Frank's medicines did Tom say were from the vet, and which were from the pharmacy?",
+      "tags": [
+        "prescriptions",
+        "housekeeping",
+        "slice"
+      ],
+      "answer_contains_pool": [
+        "cardisure",
+        "cardalis",
+        "vet",
+        "pharmacy"
+      ],
+      "answer_contains_count": 4,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ]
+    },
+    {
+      "id": "rooiels_checkin_time",
+      "question": "What time did the Rooiels host say check-in starts?",
+      "tags": [
+        "travel",
+        "forwarded",
+        "logistics",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "2pm",
+        "2 pm"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    },
+    {
+      "id": "rooiels_alarm_app",
+      "question": "What app did the Rooiels note say to use for the alarm?",
+      "tags": [
+        "travel",
+        "forwarded",
+        "app",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "Olarm"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    },
+    {
+      "id": "rooiels_outage_app",
+      "question": "What app did the Rooiels note say to download for power outages?",
+      "tags": [
+        "travel",
+        "forwarded",
+        "app",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "Eskom Se Push",
+        "Eskom"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    },
+    {
+      "id": "rooiels_payment_email",
+      "question": "What email did the Rooiels note say to send proof of payment to?",
+      "tags": [
+        "travel",
+        "forwarded",
+        "email",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "181blenna@gmail.com"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    },
+    {
+      "id": "sa_trip_extra_total",
+      "question": "What extra total did Tom list separately for the SA trip?",
+      "tags": [
+        "money",
+        "travel",
+        "span",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "99.53",
+        "€99.53"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    },
+    {
+      "id": "sa_trip_grand_total",
+      "question": "What grand total did Tom list after the SA trip extras?",
+      "tags": [
+        "money",
+        "travel",
+        "span",
+        "slice"
+      ],
+      "answer_contains_any": [
+        "861.10",
+        "€861.10"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    },
+    {
+      "id": "frank_prescription_list",
+      "question": "What prescriptions did Tom list for Frank?",
+      "tags": [
+        "prescriptions",
+        "housekeeping",
+        "list",
+        "slice"
+      ],
+      "answer_contains_pool": [
+        "Cardisure",
+        "Cardalis",
+        "Rivaraxabano",
+        "Gabapentina"
+      ],
+      "answer_contains_count": 4,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Thomas Wright"
+      ],
+      "evidence_chat_any": [
+        "Adriana, Anna & Tom Housekeeping"
+      ]
+    },
+    {
+      "id": "chutney_chicken_grocery_list",
+      "question": "What did Anna ask me to pick up for the Chutney Chicken dinner?",
+      "tags": [
+        "store",
+        "request",
+        "list",
+        "slice"
+      ],
+      "answer_contains_pool": [
+        "Worcestershire",
+        "6 Chicken Legs",
+        "Frozen Pizzas"
+      ],
+      "answer_contains_count": 3,
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Anna Bonewitz"
+      ],
+      "evidence_chat_any": [
+        "Morada dos Manos"
+      ]
+    }
+  ]
+}
