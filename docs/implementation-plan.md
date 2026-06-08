@@ -521,6 +521,8 @@ Add a control-chat memory and facts layer after the current retrieval work stabi
 - support safe memory updates from the control chat, with explicit confirmation where needed
 - include memory-aware evals that test long control-chat threads, fact carry-forward, and context-budget limits
 
+See `docs/control-chat-memory-and-eval-plan.md` for the work order, harness design, eval classes, and model-prescreen policy.
+
 ## 18. First coding step
 
 Start with:

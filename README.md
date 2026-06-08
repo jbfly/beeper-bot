@@ -17,6 +17,7 @@ Run a private agent behind a Beeper control chat. The agent indexes selected Bee
 See:
 - `docs/technical-plan.md`
 - `docs/implementation-plan.md`
+- `docs/control-chat-memory-and-eval-plan.md`
 
 ## Local model endpoint
 
