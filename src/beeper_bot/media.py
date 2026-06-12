@@ -97,13 +97,17 @@ class OpenAiCompatMediaClient:
             {
                 "type": "text",
                 "text": (
-                    "Describe this chat image in one or two sentences for a searchable archive. "
-                    "Quote verbatim any visible text, names, addresses, dates, or amounts."
+                    "Index this chat image for a searchable archive. Text comes first:\n"
+                    "- if it is a flyer, poster, screenshot, sign, document, menu, schedule, or receipt, "
+                    "transcribe ALL readable text verbatim — names, dates, times, places, prices, phone numbers, URLs\n"
+                    "- then add one short sentence of visual context\n"
+                    "- if there is no readable text, describe the image in one sentence\n"
+                    "Do not invent text that is not clearly visible."
                 ),
             },
             {"type": "image_url", "image_url": {"url": data_uri}},
         ]
-        return self._post(config, content, max_tokens=200, phase="media.describe")
+        return self._post(config, content, max_tokens=350, phase="media.describe")
 
 
 def _media_cache_dir(config: AppConfig) -> Path:
@@ -469,6 +473,10 @@ def pending_media_messages(config: AppConfig, kind: str, limit: int, chat_query:
     if chat_query.strip():
         chat_filter = "AND m.chat_id IN (SELECT chat_id FROM chats WHERE name LIKE ?)"
         params.append(f"%{chat_query.strip()}%")
+    excluded = [chat_id for chat_id in config.media.exclude_chat_ids if chat_id.strip()]
+    if excluded:
+        chat_filter += f" AND m.chat_id NOT IN ({','.join('?' for _ in excluded)})"
+        params.extend(excluded)
     params.append(max(1, limit))
     with open_db(config.archive.path) as conn:
         rows = conn.execute(

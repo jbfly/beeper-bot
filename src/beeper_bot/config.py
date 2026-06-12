@@ -62,6 +62,13 @@ class BridgeConfig:
 
 
 @dataclass(slots=True)
+class MediaConfig:
+    exclude_chat_ids: list[str] = field(default_factory=list)
+    auto_derive: bool = True
+    auto_derive_per_cycle: int = 3
+
+
+@dataclass(slots=True)
 class SecurityConfig:
     allow_web_search: bool = False
     log_raw_messages: bool = False
@@ -74,6 +81,7 @@ class AppConfig:
     archive: ArchiveConfig = field(default_factory=ArchiveConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
     bridge: BridgeConfig = field(default_factory=BridgeConfig)
+    media: MediaConfig = field(default_factory=MediaConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
 
     @property
@@ -151,6 +159,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
     archive_raw = _get_table(raw, "archive")
     llm_raw = _get_table(raw, "llm")
     bridge_raw = _get_table(raw, "bridge")
+    media_raw = _get_table(raw, "media")
     security_raw = _get_table(raw, "security")
 
     config = AppConfig(
@@ -188,6 +197,11 @@ def load_config(path: Path | str | None = None) -> AppConfig:
             reply_prefix=str(bridge_raw.get("reply_prefix", DEFAULT_REPLY_PREFIX)),
             max_reply_chars=_int_value(bridge_raw, "max_reply_chars", 3500),
             send_ack=_bool_value(bridge_raw, "send_ack", True),
+        ),
+        media=MediaConfig(
+            exclude_chat_ids=_str_list_value(media_raw, "exclude_chat_ids", []),
+            auto_derive=_bool_value(media_raw, "auto_derive", True),
+            auto_derive_per_cycle=_int_value(media_raw, "auto_derive_per_cycle", 3),
         ),
         security=SecurityConfig(
             allow_web_search=_bool_value(security_raw, "allow_web_search", False),

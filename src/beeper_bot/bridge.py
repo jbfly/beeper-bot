@@ -376,6 +376,22 @@ class ControlBridge:
 
         return BridgeLoopResult(processed, replied, busy_messages)
 
+    def _auto_derive_media(self) -> None:
+        """Transcribe/describe a few new attachments per sync cycle so media
+        becomes searchable without manual index-media runs."""
+        from .media import run_derivation_pass
+
+        per_cycle = max(1, int(self.config.media.auto_derive_per_cycle))
+        for kind in ("voice-memo", "image"):
+            results = run_derivation_pass(self.config, kind, limit=per_cycle)
+            if results:
+                done = sum(1 for item in results if item.status == "done")
+                log(f"auto-derive {kind}: processed={len(results)} done={done}")
+            if any(item.status == "failed" for item in results):
+                # Likely the model endpoint is unavailable (GPU owned by
+                # something else); stop this cycle instead of burning retries.
+                break
+
     def serve_forever(self) -> None:
         poll_seconds = max(1, int(self.config.beeper.poll_seconds))
         sync_interval = max(poll_seconds, int(self.config.beeper.sync_interval_seconds))
@@ -385,6 +401,8 @@ class ControlBridge:
             try:
                 if time.monotonic() - last_full_sync >= sync_interval:
                     self._maybe_sync(force=True)
+                    if self.config.media.auto_derive:
+                        self._auto_derive_media()
                     last_full_sync = time.monotonic()
                 self.process_once()
             except Exception as exc:

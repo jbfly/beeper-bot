@@ -174,6 +174,13 @@ class MediaTest(MediaTestBase):
         response = search_archive(config, "olive oil")
         self.assertEqual(response.results[0].message_id, "voice-1")
 
+    def test_excluded_chats_are_never_processed(self) -> None:
+        config, client, tmpdir = self._config_with_media()
+        self.addCleanup(tmpdir.cleanup)
+        config.media.exclude_chat_ids = ["chat-a"]
+        self.assertEqual(pending_media_messages(config, "voice-memo", limit=10), [])
+        self.assertEqual(run_derivation_pass(config, "voice-memo", limit=10, llm_client=FakeMediaClient()), [])
+
     def test_processed_messages_are_not_reprocessed(self) -> None:
         config, client, tmpdir = self._config_with_media()
         self.addCleanup(tmpdir.cleanup)
