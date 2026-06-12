@@ -86,6 +86,15 @@ At minimum:
 
 This becomes the default for model comparison runs.
 
+### 4.3.1 Determinism caveat
+
+Temperature 0 does not make runs fully reproducible on the local stack:
+`llama-server` KV-cache reuse (`CACHE_REUSE=256`) changes logits slightly
+depending on what was cached by earlier cases, so borderline cases can flip
+between runs (observed: ±1 case on `slice`). Treat single-case deltas as
+noise; for high-stakes comparisons either run suites twice or serve evals
+with cache reuse disabled.
+
 ### 4.4 Answer-path validity
 
 The harness serves two different purposes, and a case must declare which one it is:

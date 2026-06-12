@@ -64,6 +64,13 @@ all control-memory and ladder cases now genuinely reach the model, see
 
 - `catchup`: `5/5` scored passed (real Bom Sucesso group-chat digests)
 
+After the 43-chat archive expansion (12k messages) the 26B baseline held:
+core improved to `19/20`, slice `13/14` (one borderline flake), starter
+unchanged, control-memory `7/8` — the pronoun follow-up now answers
+correctly from the control turn but without re-grounding in an archive
+citation. Single-case run-to-run flips are expected; see the determinism
+caveat in `docs/control-chat-memory-and-eval-plan.md` §4.3.1.
+
 `anna_owed_john` fails because FTS has no stemming (`owe` does not match
 `owes` in a third-party message); switching `message_fts` to a porter
 tokenizer is the identified fix and needs a schema migration.
