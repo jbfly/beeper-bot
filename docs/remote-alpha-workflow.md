@@ -27,6 +27,8 @@ Mod+Return       shared tmux workspace
 Mod+Shift+Return plain fish shell
 ```
 
+Each new shared-workspace terminal creates a fresh tmux window inside the shared `alpha` session, so multiple Ghostty windows can attach to the same session without all landing on the same tmux window.
+
 This does five things:
 
 1. wake `alpha` with Wake-on-LAN if needed
@@ -88,6 +90,8 @@ The shared workspace uses:
 
 - socket: `alpha`
 - session: `alpha`
+
+`alpha-work` now creates a fresh tmux window on each attach, then attaches the client there.
 
 So the raw tmux form is:
 
