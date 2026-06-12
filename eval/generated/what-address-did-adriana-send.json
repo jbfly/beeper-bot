@@ -1,0 +1,22 @@
+{
+  "name": "generated-trace-export",
+  "description": "Console-exported trace stub. Fill expected assertions by hand.",
+  "cases": [
+    {
+      "id": "what-address-did-adriana-send",
+      "question": "What address did Adriana send?",
+      "tags": [
+        "generated",
+        "console-export"
+      ],
+      "notes": "Exported from trace 2f5bf0bcc87d45f6bc1788544e76ee38.",
+      "enabled": false,
+      "score_case": false,
+      "min_evidence": 0,
+      "require_citation": true,
+      "answer_contains_any": [
+        "Adriana sent the address \"Rua Afonso enes n°17 R/c\" [1].\n\nSources:\n[1] Adriana, Anna & Tom Housekeeping — Adriana — 2026-04-19T20:14:39.000Z"
+      ]
+    }
+  ]
+}

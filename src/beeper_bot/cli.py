@@ -8,6 +8,7 @@ from pathlib import Path
 from .beeper_api import BeeperApiClient, BeeperApiError
 from .bridge import ControlBridge
 from .config import DEFAULT_CONFIG_PATH, ConfigError, load_config
+from .console import serve_console
 from .db import SCHEMA_VERSION, collect_runtime_status, init_db_path
 from .evals import (
     DEFAULT_EVAL_SUITE_PATH,
@@ -56,6 +57,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve = subparsers.add_parser("serve", help="Poll the private control chat")
     serve.add_argument("--once", action="store_true", help="Run one poll pass and exit")
     serve.add_argument("--json", action="store_true", help="Print machine-readable output for --once")
+
+    console = subparsers.add_parser("console", help="Run the local operator console")
+    console.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    console.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
+    console.add_argument("--sample-seconds", type=int, default=2, help="Telemetry sample interval in seconds")
 
     chats = subparsers.add_parser("chats", help="List available Beeper chats")
     chats.add_argument("--json", action="store_true", help="Print machine-readable output")
@@ -400,6 +406,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_ask(config_path, args.question, args.limit, args.json)
         if args.command == "serve":
             return cmd_serve(config_path, args.once, args.json)
+        if args.command == "console":
+            config = load_config(config_path)
+            serve_console(config, host=args.host, port=args.port, sample_seconds=args.sample_seconds)
+            return 0
         if args.command == "eval":
             return cmd_eval(
                 config_path,

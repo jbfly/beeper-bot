@@ -15,6 +15,8 @@ This is the proof-of-concept target. It avoids split deployment work while the p
 
 The code must still keep clean boundaries between ingest, storage, retrieval, and inference. That makes later migration possible.
 
+The next design step is not more narrow benchmark tuning. It is bounded slice reasoning and control-chat memory under explicit prompt-budget pressure. The evaluation plan in `docs/control-chat-memory-and-eval-plan.md` is therefore part of the implementation contract, not a side note.
+
 ## 2. Deployment phases
 
 ### 2.1 MVP
@@ -38,6 +40,21 @@ Expected shape:
 
 Constraint:
 - as long as the Beeper Desktop local API is the source, the desktop stays the authority for ingest
+
+## 3. Runtime layout
+
+### 2.3 Later mixed-model runtime
+
+A later runtime may use more than one local model, but only sequentially.
+The present GPU budget does not support two resident 26B-class endpoints in a practical way.
+
+If mixed-model routing is added, the likely shape is:
+- one smaller long-context model for continuity, summary refresh, and memory-write routing
+- one stronger model for archive QA and harder slice reasoning
+- a local arbiter layer that can unload and load on demand
+
+Do not make this the first memory implementation.
+First build the memory substrate and the context-pressure harness. Then use the ladder results to decide whether the extra orchestration is justified.
 
 ## 3. Runtime layout
 

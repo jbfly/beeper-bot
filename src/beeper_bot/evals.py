@@ -10,6 +10,14 @@ from .config import AppConfig
 from .llm import AskResponse, LlmClient, ask_archive
 
 
+TOKEN_RE = __import__("re").compile(r"[A-Za-zÀ-ÿ0-9'.-]+")
+SOURCE_TOKEN_STOPWORDS = {
+    "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "from", "with",
+    "what", "who", "is", "was", "were", "did", "does", "do", "my", "your", "our",
+    "me", "you", "they", "them", "their", "that", "this", "those", "these", "again",
+}
+
+
 DEFAULT_EVAL_SUITE_PATH = Path(__file__).resolve().parents[2] / "eval" / "starter.json"
 
 
@@ -74,8 +82,20 @@ class EvalCaseResult:
     control_turns: list[dict[str, Any]]
     memory_state: dict[str, Any]
     expected_actions: list[str]
+    inferred_actions: list[str]
     expected_sources: list[str]
+    inferred_sources: list[str]
     context_budget_class: str
+
+
+@dataclass(slots=True)
+class EvalFamilySummary:
+    family_id: str
+    scored_cases: int
+    passed_cases: int
+    failed_cases: int
+    first_failed_rung: str
+    rung_results: dict[str, dict[str, Any]]
 
 
 @dataclass(slots=True)
@@ -89,6 +109,7 @@ class EvalSuiteResult:
     failed_cases: int
     runtime: dict[str, Any]
     results: list[EvalCaseResult]
+    family_summaries: list[EvalFamilySummary] = field(default_factory=list)
 
 
 def _string_list(value: Any) -> list[str]:
@@ -173,21 +194,163 @@ def _contains(text: str, needle: str) -> bool:
     return needle.casefold() in text.casefold()
 
 
-def _check_case(case: EvalCase, response: AskResponse) -> tuple[dict[str, bool], list[str]]:
+def _tokens(text: str) -> set[str]:
+    return {
+        token.casefold()
+        for token in TOKEN_RE.findall(text)
+        if len(token) > 2 and token.casefold() not in SOURCE_TOKEN_STOPWORDS
+    }
+
+
+def _has_overlap(answer_tokens: set[str], text: str, threshold: int = 2) -> bool:
+    return len(answer_tokens & _tokens(text)) >= threshold
+
+
+def _infer_answer_actions(case: EvalCase, response: AskResponse) -> list[str]:
+    answer = response.answer.strip().casefold()
+    inferred: list[str] = []
+
+    confirm_markers = (
+        "confirm",
+        "please confirm",
+        "before i save",
+        "should i save",
+        "do you want me to save",
+        "do you want me to remember",
+        "can save that",
+    )
+    if any(marker in answer for marker in confirm_markers):
+        inferred.append("confirm-memory-write")
+
+    alias_markers = (
+        "alias",
+        "remember that",
+        "remember addy as",
+        "addy is an alias",
+        "alias for",
+        "refers to",
+    )
+    if any(marker in answer for marker in alias_markers):
+        inferred.append("add-alias")
+
+    person_markers = (
+        "add person",
+        "new person",
+        "create person",
+    )
+    if any(marker in answer for marker in person_markers):
+        inferred.append("add-person")
+
+    relationship_markers = (
+        "relationship",
+        "sister",
+        "brother in law",
+        "girlfriend",
+        "wife",
+        "husband",
+    )
+    if any(marker in answer for marker in relationship_markers) and ("remember" in answer or "save" in answer):
+        inferred.append("add-relationship-fact")
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for value in inferred:
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(value)
+    return ordered
+
+
+def _infer_answer_sources(case: EvalCase, response: AskResponse) -> list[str]:
+    answer = response.answer.strip()
+    answer_tokens = _tokens(answer)
+    inferred: list[str] = list(getattr(response, "used_sources", []) or [])
+
+    if "[" in answer and "]" in answer:
+        inferred.append("archive")
+
+    facts = case.memory_state.get("facts") if isinstance(case.memory_state, dict) else None
+    if isinstance(facts, list):
+        for item in facts:
+            if not isinstance(item, dict):
+                continue
+            subject = str(item.get("subject") or "").strip()
+            predicate = str(item.get("predicate") or "").strip()
+            obj = str(item.get("object") or "").strip()
+            if any(_contains(answer, value) for value in (subject, predicate, obj) if value):
+                inferred.append("memory")
+                break
+        else:
+            if "memory" in answer.casefold() or "structured memory" in answer.casefold():
+                inferred.append("memory")
+
+    summary = str(case.memory_state.get("control_summary") or "").strip() if isinstance(case.memory_state, dict) else ""
+    if summary and _has_overlap(answer_tokens, summary):
+        inferred.append("summary")
+
+    if case.control_turns:
+        for turn in case.control_turns:
+            content = str(turn.get("content") or "").strip()
+            if content and _has_overlap(answer_tokens, content):
+                inferred.append("control-turns")
+                break
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for value in inferred:
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(value)
+    return ordered
+
+
+def _check_case(case: EvalCase, response: AskResponse) -> tuple[dict[str, bool], list[str], list[str], list[str]]:
     answer = response.answer.strip()
     evidence = response.evidence
     checks: dict[str, bool] = {}
     failures: list[str] = []
 
+    inferred_actions = _infer_answer_actions(case, response)
+
     checks["min_evidence"] = len(evidence) >= max(0, case.min_evidence)
     if not checks["min_evidence"]:
         failures.append(f"needed at least {case.min_evidence} evidence item(s), got {len(evidence)}")
 
+    inferred_sources = _infer_answer_sources(case, response)
+    requires_archive_citation = case.require_citation and (not case.expected_sources or "archive" in {value.casefold() for value in case.expected_sources})
     checks["citation_required"] = True
-    if case.require_citation:
+    if requires_archive_citation:
         checks["citation_required"] = "[" in answer and "]" in answer
         if not checks["citation_required"]:
             failures.append("answer has no citation")
+
+    checks["source_classes_expected"] = True
+    if case.expected_sources:
+        expected = {value.casefold() for value in case.expected_sources}
+        found = {value.casefold() for value in inferred_sources}
+        checks["source_classes_expected"] = expected.issubset(found)
+        if not checks["source_classes_expected"]:
+            missing = sorted(expected - found)
+            failures.append("answer missing expected source classes: " + ", ".join(missing))
+
+    checks["source_classes_no_fake_archive"] = True
+    if case.expected_sources and "archive" not in {value.casefold() for value in case.expected_sources}:
+        checks["source_classes_no_fake_archive"] = "archive" not in {value.casefold() for value in inferred_sources}
+        if not checks["source_classes_no_fake_archive"]:
+            failures.append("answer used archive-style citation where archive source was not expected")
+
+    checks["expected_actions"] = True
+    if case.expected_actions:
+        expected = {value.casefold() for value in case.expected_actions}
+        found = {value.casefold() for value in inferred_actions}
+        checks["expected_actions"] = expected.issubset(found)
+        if not checks["expected_actions"]:
+            missing = sorted(expected - found)
+            failures.append("answer missing expected actions: " + ", ".join(missing))
 
     checks["answer_contains_all"] = all(_contains(answer, token) for token in case.answer_contains_all)
     if case.answer_contains_all and not checks["answer_contains_all"]:
@@ -295,14 +458,20 @@ def _check_case(case: EvalCase, response: AskResponse) -> tuple[dict[str, bool],
         if not checks["plan_time_hint_any"]:
             failures.append("plan time_hint mismatch: expected one of " + ", ".join(case.plan_time_hint_any))
 
-    return checks, failures
+    return checks, failures, inferred_sources, inferred_actions
 
 
 def evaluate_case(config: AppConfig, case: EvalCase, llm_client: LlmClient | None = None) -> EvalCaseResult:
     started = time.perf_counter()
-    response = ask_archive(config, case.question, llm_client=llm_client)
+    response = ask_archive(
+        config,
+        case.question,
+        llm_client=llm_client,
+        control_turns=case.control_turns,
+        memory_state=case.memory_state,
+    )
     elapsed_ms = int((time.perf_counter() - started) * 1000)
-    checks, failures = _check_case(case, response)
+    checks, failures, inferred_sources, inferred_actions = _check_case(case, response)
     passed = all(checks.values()) if case.score_case and case.enabled and not case.metrics_only else False
 
     return EvalCaseResult(
@@ -358,7 +527,9 @@ def evaluate_case(config: AppConfig, case: EvalCase, llm_client: LlmClient | Non
         control_turns=list(case.control_turns),
         memory_state=dict(case.memory_state),
         expected_actions=list(case.expected_actions),
+        inferred_actions=inferred_actions,
         expected_sources=list(case.expected_sources),
+        inferred_sources=inferred_sources,
         context_budget_class=case.context_budget_class,
     )
 
@@ -406,6 +577,68 @@ def _eval_runtime_payload(config: AppConfig) -> dict[str, Any]:
 
 
 
+RUNG_ORDER = {"short": 0, "medium": 1, "long": 2, "stress": 3}
+
+
+def _case_family_id(result: EvalCaseResult) -> str:
+    budget = result.context_budget_class.strip().casefold()
+    suffix = f"_{budget}" if budget else ""
+    if suffix and result.case_id.casefold().endswith(suffix):
+        return result.case_id[: -len(suffix)]
+    return result.case_id
+
+
+def _build_family_summaries(results: list[EvalCaseResult]) -> list[EvalFamilySummary]:
+    grouped: dict[str, list[EvalCaseResult]] = {}
+    for result in results:
+        if not result.enabled:
+            continue
+        budget = result.context_budget_class.strip().casefold()
+        if not budget:
+            continue
+        family_id = _case_family_id(result)
+        grouped.setdefault(family_id, []).append(result)
+
+    summaries: list[EvalFamilySummary] = []
+    for family_id in sorted(grouped):
+        items = sorted(grouped[family_id], key=lambda item: (RUNG_ORDER.get(item.context_budget_class.casefold(), 99), item.case_id))
+        rung_results: dict[str, dict[str, Any]] = {}
+        scored_cases = 0
+        passed_cases = 0
+        failed_cases = 0
+        first_failed_rung = ""
+        for item in items:
+            budget = item.context_budget_class
+            scored = item.enabled and item.score_case and not item.metrics_only
+            rung_results[budget] = {
+                "case_id": item.case_id,
+                "scored": scored,
+                "metrics_only": item.metrics_only,
+                "passed": item.passed if scored else False,
+                "elapsed_ms": item.elapsed_ms,
+            }
+            if not scored:
+                continue
+            scored_cases += 1
+            if item.passed:
+                passed_cases += 1
+            else:
+                failed_cases += 1
+                if not first_failed_rung:
+                    first_failed_rung = budget
+        summaries.append(
+            EvalFamilySummary(
+                family_id=family_id,
+                scored_cases=scored_cases,
+                passed_cases=passed_cases,
+                failed_cases=failed_cases,
+                first_failed_rung=first_failed_rung,
+                rung_results=rung_results,
+            )
+        )
+    return summaries
+
+
 def run_eval_suite(
     config: AppConfig,
     suite: EvalSuite,
@@ -448,6 +681,7 @@ def run_eval_suite(
         failed_cases=failed_cases,
         runtime=_eval_runtime_payload(config),
         results=results,
+        family_summaries=_build_family_summaries(results),
     )
 
 
@@ -462,6 +696,7 @@ def suite_result_to_dict(result: EvalSuiteResult) -> dict[str, Any]:
         "failed_cases": result.failed_cases,
         "runtime": result.runtime,
         "results": [asdict(item) for item in result.results],
+        "family_summaries": [asdict(item) for item in result.family_summaries],
     }
 
 
@@ -481,6 +716,25 @@ def format_suite_result(result: EvalSuiteResult) -> str:
             f"planner_temperature={result.runtime.get('planner_temperature')}"
         )
 
+    if result.family_summaries:
+        lines.append("Family summary:")
+        for family in result.family_summaries:
+            first_failed = family.first_failed_rung or "none"
+            rung_bits = []
+            for rung in sorted(family.rung_results, key=lambda value: RUNG_ORDER.get(value.casefold(), 99)):
+                rung_result = family.rung_results[rung]
+                if rung_result["metrics_only"]:
+                    status = "metric"
+                elif not rung_result["scored"]:
+                    status = "info"
+                else:
+                    status = "pass" if rung_result["passed"] else "fail"
+                rung_bits.append(f"{rung}={status}")
+            lines.append(
+                f"- {family.family_id}: passed={family.passed_cases}/{family.scored_cases} "
+                f"first_failed_rung={first_failed} ({', '.join(rung_bits)})"
+            )
+
     for item in result.results:
         if not item.enabled:
             status = "SKIP"
@@ -499,6 +753,10 @@ def format_suite_result(result: EvalSuiteResult) -> str:
             f"kind={item.plan['answer_kind']} time={item.plan['time_hint']} "
             f"people={item.plan['people']} senders={item.plan['preferred_senders']} chats={item.plan['preferred_chats']}"
         )
+        if item.expected_sources:
+            lines.append(f"Sources: expected={item.expected_sources} inferred={item.inferred_sources}")
+        if item.expected_actions:
+            lines.append(f"Actions: expected={item.expected_actions} inferred={item.inferred_actions}")
         lines.append(f"A: {item.answer}")
         if item.failures:
             for failure in item.failures:

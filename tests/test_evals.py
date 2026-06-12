@@ -14,6 +14,7 @@ from beeper_bot.evals import (
     format_suite_result,
     load_eval_suite,
     run_eval_suite,
+    suite_result_to_dict,
 )
 from beeper_bot.llm import EvidenceItem
 from beeper_bot.planning import QueryPlan
@@ -46,7 +47,14 @@ class FakeLlmClient:
             time_hint="any",
         )
 
-    def answer_from_evidence(self, config, question: str, evidence: list[EvidenceItem], person_context: str = "") -> str:
+    def answer_from_evidence(
+        self,
+        config,
+        question: str,
+        evidence: list[EvidenceItem],
+        person_context: str = "",
+        control_context: str = "",
+    ) -> str:
         return self.answer
 
     def plan_query(self, config, question: str, catalog, graph=None) -> QueryPlan:
@@ -161,6 +169,48 @@ class EvalTest(unittest.TestCase):
         self.assertTrue(result.passed)
         self.assertEqual(result.failures, [])
         self.assertGreaterEqual(result.evidence_count, 1)
+        self.assertIn("archive", result.inferred_sources)
+
+    def test_evaluate_case_accepts_memory_answer_without_archive_citation(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        case = EvalCase(
+            case_id="memory",
+            question="Who is Anna again?",
+            min_evidence=0,
+            require_citation=False,
+            answer_contains_any=["sister"],
+            expected_sources=["memory"],
+            memory_state={
+                "facts": [
+                    {"subject": "Anna Bonewitz", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
+                ]
+            },
+        )
+        result = evaluate_case(config, case, llm_client=FakeLlmClient("Anna Bonewitz is your sister."))
+        self.assertTrue(result.passed)
+        self.assertIn("memory", result.inferred_sources)
+        self.assertNotIn("archive", result.inferred_sources)
+
+    def test_evaluate_case_rejects_fake_archive_citation_for_memory_only_case(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        case = EvalCase(
+            case_id="memory-fake-citation",
+            question="Tell me about Anna from memory.",
+            min_evidence=0,
+            require_citation=False,
+            answer_contains_any=["sister"],
+            expected_sources=["memory"],
+            memory_state={
+                "facts": [
+                    {"subject": "Anna Bonewitz", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
+                ]
+            },
+        )
+        result = evaluate_case(config, case, llm_client=FakeLlmClient("Anna Bonewitz is your sister [1]."))
+        self.assertFalse(result.passed)
+        self.assertIn("answer used archive-style citation where archive source was not expected", result.failures)
 
     def test_configure_eval_run_can_force_deterministic_sampling(self) -> None:
         config, tmpdir = self._config_with_data()
@@ -214,6 +264,116 @@ class EvalTest(unittest.TestCase):
         self.assertIn("PASS pass-case", text)
         self.assertIn("INFO info-case", text)
         self.assertIn("METRIC metric-case", text)
+
+    def test_run_eval_suite_emits_family_summary_for_context_ladder(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        suite_path = Path(tmpdir.name) / "suite.json"
+        suite_path.write_text(json.dumps({
+            "name": "context-ladder",
+            "cases": [
+                {
+                    "id": "family_short",
+                    "question": "What address did Seth send?",
+                    "context_budget_class": "short",
+                    "answer_contains_any": ["123 Sample St"]
+                },
+                {
+                    "id": "family_medium",
+                    "question": "What address did Seth send?",
+                    "context_budget_class": "medium",
+                    "answer_contains_any": ["missing"]
+                },
+                {
+                    "id": "family_stress",
+                    "question": "What address did Seth send?",
+                    "context_budget_class": "stress",
+                    "metrics_only": True,
+                    "score_case": False,
+                    "answer_contains_any": ["missing"]
+                }
+            ]
+        }))
+        suite = load_eval_suite(suite_path)
+        result = run_eval_suite(config, suite, llm_client=FakeLlmClient("Seth sent 123 Sample St [1]."))
+        self.assertEqual(len(result.family_summaries), 1)
+        family = result.family_summaries[0]
+        self.assertEqual(family.family_id, "family")
+        self.assertEqual(family.scored_cases, 2)
+        self.assertEqual(family.passed_cases, 1)
+        self.assertEqual(family.failed_cases, 1)
+        self.assertEqual(family.first_failed_rung, "medium")
+        self.assertEqual(family.rung_results["short"]["passed"], True)
+        self.assertEqual(family.rung_results["stress"]["metrics_only"], True)
+        text = format_suite_result(result)
+        self.assertIn("Family summary:", text)
+        self.assertIn("family: passed=1/2 first_failed_rung=medium", text)
+        payload = suite_result_to_dict(result)
+        self.assertEqual(payload["family_summaries"][0]["family_id"], "family")
+
+    def test_format_suite_result_shows_expected_and_inferred_sources(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        suite_path = Path(tmpdir.name) / "suite.json"
+        suite_path.write_text(json.dumps({
+            "name": "control-memory",
+            "cases": [
+                {
+                    "id": "memory_case",
+                    "question": "Who is Anna again?",
+                    "expected_sources": ["memory"],
+                    "memory_state": {
+                        "facts": [
+                            {"subject": "Anna Bonewitz", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
+                        ]
+                    },
+                    "answer_contains_any": ["sister"]
+                }
+            ]
+        }))
+        suite = load_eval_suite(suite_path)
+        result = run_eval_suite(config, suite, llm_client=FakeLlmClient("Anna Bonewitz is your sister."))
+        text = format_suite_result(result)
+        self.assertIn("Sources: expected=['memory'] inferred=['memory']", text)
+
+    def test_evaluate_case_checks_expected_actions_for_alias_confirmation(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        case = EvalCase(
+            case_id="alias-add",
+            question="Remember that Addy is Adrienne Peña.",
+            min_evidence=0,
+            require_citation=False,
+            expected_actions=["confirm-memory-write", "add-alias"],
+            answer_contains_any=["confirm", "alias"],
+        )
+        result = evaluate_case(
+            config,
+            case,
+            llm_client=FakeLlmClient("I can save that as an alias for Adrienne Peña. Please confirm before I save it."),
+        )
+        self.assertTrue(result.passed)
+        self.assertIn("confirm-memory-write", result.inferred_actions)
+        self.assertIn("add-alias", result.inferred_actions)
+
+    def test_evaluate_case_fails_when_expected_action_is_missing(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        case = EvalCase(
+            case_id="alias-add-missing",
+            question="Please store that Addy is Adrienne Peña.",
+            min_evidence=0,
+            require_citation=False,
+            expected_actions=["confirm-memory-write", "add-alias"],
+            answer_contains_any=["saved"],
+        )
+        result = evaluate_case(
+            config,
+            case,
+            llm_client=FakeLlmClient("Okay, saved."),
+        )
+        self.assertFalse(result.passed)
+        self.assertIn("answer missing expected actions: add-alias, confirm-memory-write", result.failures)
 
 
 if __name__ == "__main__":

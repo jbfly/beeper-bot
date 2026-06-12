@@ -11,7 +11,7 @@ from typing import Iterator
 from .config import AppConfig, ensure_private_dir, ensure_private_file
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 
 @dataclass(slots=True)
@@ -24,6 +24,9 @@ class DatabaseStats:
     sync_state_count: int
     runtime_state_count: int
     people_count: int
+    control_turn_count: int
+    memory_fact_count: int
+    pending_update_count: int
     file_exists: bool
     file_size_bytes: int
 
@@ -139,6 +142,71 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (person_id, chat_id),
             FOREIGN KEY (person_id) REFERENCES people(person_id)
         );
+
+        CREATE TABLE IF NOT EXISTS control_turns (
+            turn_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            chat_id TEXT NOT NULL DEFAULT '',
+            message_id TEXT NOT NULL DEFAULT '',
+            sort_key INTEGER,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS memory_facts (
+            fact_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT NOT NULL,
+            predicate TEXT NOT NULL,
+            object TEXT NOT NULL,
+            source_kind TEXT NOT NULL DEFAULT 'memory',
+            source_text TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS memory_updates (
+            update_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            update_kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS traces (
+            trace_id TEXT PRIMARY KEY,
+            trace_kind TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'console',
+            question TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'running',
+            final_answer TEXT NOT NULL DEFAULT '',
+            error_text TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            finished_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS trace_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trace_id TEXT NOT NULL,
+            seq_no INTEGER NOT NULL,
+            event_kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(trace_id) REFERENCES traces(trace_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_trace_events_trace_seq ON trace_events(trace_id, seq_no, event_id);
+
+        CREATE TABLE IF NOT EXISTS telemetry_samples (
+            sample_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            gpu_util REAL,
+            vram_used_mb REAL,
+            vram_total_mb REAL,
+            gpu_temp_c REAL,
+            error_text TEXT NOT NULL DEFAULT ''
+        );
         COMMIT;
         """
     )
@@ -174,7 +242,94 @@ def migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
         COMMIT;
         """
     )
-    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit()
+
+
+def migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version >= 3:
+        return
+    conn.executescript(
+        """
+        BEGIN;
+        CREATE TABLE IF NOT EXISTS control_turns (
+            turn_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            chat_id TEXT NOT NULL DEFAULT '',
+            message_id TEXT NOT NULL DEFAULT '',
+            sort_key INTEGER,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS memory_facts (
+            fact_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT NOT NULL,
+            predicate TEXT NOT NULL,
+            object TEXT NOT NULL,
+            source_kind TEXT NOT NULL DEFAULT 'memory',
+            source_text TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS memory_updates (
+            update_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            update_kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        COMMIT;
+        """
+    )
+    conn.execute("PRAGMA user_version = 3")
+    conn.commit()
+
+
+def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version >= 4:
+        return
+    conn.executescript(
+        """
+        BEGIN;
+        CREATE TABLE IF NOT EXISTS traces (
+            trace_id TEXT PRIMARY KEY,
+            trace_kind TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'console',
+            question TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'running',
+            final_answer TEXT NOT NULL DEFAULT '',
+            error_text TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            finished_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS trace_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trace_id TEXT NOT NULL,
+            seq_no INTEGER NOT NULL,
+            event_kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(trace_id) REFERENCES traces(trace_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_trace_events_trace_seq ON trace_events(trace_id, seq_no, event_id);
+        CREATE TABLE IF NOT EXISTS telemetry_samples (
+            sample_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            gpu_util REAL,
+            vram_used_mb REAL,
+            vram_total_mb REAL,
+            gpu_temp_c REAL,
+            error_text TEXT NOT NULL DEFAULT ''
+        );
+        COMMIT;
+        """
+    )
+    conn.execute("PRAGMA user_version = 4")
     conn.commit()
 
 
@@ -187,6 +342,13 @@ def init_db_path(db_path: Path) -> None:
             initialize_database(conn)
         elif version == 1:
             migrate_v1_to_v2(conn)
+            migrate_v2_to_v3(conn)
+            migrate_v3_to_v4(conn)
+        elif version == 2:
+            migrate_v2_to_v3(conn)
+            migrate_v3_to_v4(conn)
+        elif version == 3:
+            migrate_v3_to_v4(conn)
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
@@ -236,6 +398,9 @@ def collect_database_stats(db_path: Path) -> DatabaseStats:
             sync_state_count=0,
             runtime_state_count=0,
             people_count=0,
+            control_turn_count=0,
+            memory_fact_count=0,
+            pending_update_count=0,
             file_exists=False,
             file_size_bytes=0,
         )
@@ -248,6 +413,9 @@ def collect_database_stats(db_path: Path) -> DatabaseStats:
         sync_state_count = int(conn.execute("SELECT COUNT(*) FROM sync_state").fetchone()[0])
         runtime_state_count = int(conn.execute("SELECT COUNT(*) FROM runtime_state").fetchone()[0])
         people_count = int(conn.execute("SELECT COUNT(*) FROM people").fetchone()[0])
+        control_turn_count = int(conn.execute("SELECT COUNT(*) FROM control_turns").fetchone()[0])
+        memory_fact_count = int(conn.execute("SELECT COUNT(*) FROM memory_facts WHERE status = 'active'").fetchone()[0])
+        pending_update_count = int(conn.execute("SELECT COUNT(*) FROM memory_updates WHERE status = 'pending'").fetchone()[0])
 
     return DatabaseStats(
         path=db_path,
@@ -258,6 +426,9 @@ def collect_database_stats(db_path: Path) -> DatabaseStats:
         sync_state_count=sync_state_count,
         runtime_state_count=runtime_state_count,
         people_count=people_count,
+        control_turn_count=control_turn_count,
+        memory_fact_count=memory_fact_count,
+        pending_update_count=pending_update_count,
         file_exists=True,
         file_size_bytes=file_size,
     )

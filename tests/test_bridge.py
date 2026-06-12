@@ -141,7 +141,7 @@ class BridgeTest(unittest.TestCase):
 
             import beeper_bot.bridge as bridge_mod
             original = bridge_mod.ask_archive
-            def raising_ask_archive(config, question):
+            def raising_ask_archive(config, question, **kwargs):
                 raise LlmError("LLM API failed: <urlopen error [Errno 111] Connection refused>")
             bridge_mod.ask_archive = raising_ask_archive
             try:
@@ -150,6 +150,35 @@ class BridgeTest(unittest.TestCase):
                 bridge_mod.ask_archive = original
             self.assertEqual(result.replied_messages, 1)
             self.assertIn("local model is starting up", client.sent_messages[-1][1].lower())
+
+    def test_process_once_can_confirm_pending_alias_update(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = load_config(self._write_config(tmpdir))
+            client = FakeBeeperClient(
+                chats={
+                    "control-chat": {"title": "Control"},
+                    "indexed-chat": {"title": "Indexed"},
+                },
+                messages={
+                    "control-chat": [
+                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "bootstrap"},
+                    ],
+                    "indexed-chat": [],
+                },
+            )
+            bridge = ControlBridge(config, api_client=client)
+            bridge.process_once()
+            client.messages["control-chat"].append(
+                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "Remember that Addy is Adrienne Peña."}
+            )
+            bridge.process_once()
+            self.assertIn("Please confirm before I save it.", client.sent_messages[-1][1])
+            client.messages["control-chat"].append(
+                {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "yes"}
+            )
+            result = bridge.process_once()
+            self.assertEqual(result.replied_messages, 1)
+            self.assertIn("Saved alias: Addy → Adrienne Peña.", client.sent_messages[-1][1])
 
 
 if __name__ == "__main__":

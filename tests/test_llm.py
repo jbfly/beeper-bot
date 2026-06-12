@@ -6,8 +6,21 @@ from pathlib import Path
 
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
-from beeper_bot.llm import AskResponse, EvidenceItem, LlmError, ask_archive, build_answer_prompt, build_evidence_packet, format_ask_response
+from beeper_bot.llm import (
+    AskResponse,
+    EvidenceItem,
+    LlmError,
+    _repair_address_answer_from_retrieval,
+    _repair_list_answer_from_evidence,
+    ask_archive,
+    build_answer_prompt,
+    build_evidence_packet,
+    build_slice_evidence_packet,
+    build_slice_reasoning_prompt,
+    format_ask_response,
+)
 from beeper_bot.planning import QueryPlan
+from beeper_bot.retrieval import pack_chat_windows, search_archive_multi
 from beeper_bot.sync import sync_chats
 
 
@@ -37,7 +50,14 @@ class FakeLlmClient:
             time_hint="any",
         )
 
-    def answer_from_evidence(self, config, question: str, evidence: list[EvidenceItem], person_context: str = "") -> str:
+    def answer_from_evidence(
+        self,
+        config,
+        question: str,
+        evidence: list[EvidenceItem],
+        person_context: str = "",
+        control_context: str = "",
+    ) -> str:
         return self.answer
 
     def plan_query(self, config, question: str, catalog, graph=None) -> QueryPlan:
@@ -89,6 +109,15 @@ class LlmTest(unittest.TestCase):
                         "type": "TEXT",
                         "text": "Meet there at 5pm.",
                     },
+                    {
+                        "id": "msg-3",
+                        "sortKey": "3",
+                        "timestamp": "2026-05-12T10:00:00Z",
+                        "senderID": "u1",
+                        "senderName": "Seth",
+                        "type": "TEXT",
+                        "text": "Please check whether the store has bottom sheets.",
+                    },
                 ]
             },
         )
@@ -111,9 +140,14 @@ class LlmTest(unittest.TestCase):
         evidence = [
             EvidenceItem("[1]", "msg-1", "chat-a", "Family logistics", "Seth", "2026-05-11T14:22:00Z", "The address is 123 Sample St.", 10.0)
         ]
-        prompt = build_answer_prompt("What address?", evidence)
+        prompt = build_answer_prompt(
+            "What address?",
+            evidence,
+            control_context="Recent control-chat turns:\n- user: What address did Seth send?",
+        )
         self.assertIn("Question:\nWhat address?", prompt)
         self.assertIn("[1] [Family logistics]", prompt)
+        self.assertIn("Control-memory context:", prompt)
 
     def test_build_evidence_packet_prefers_relevant_line_in_long_message(self) -> None:
         long_text = (
@@ -158,6 +192,51 @@ class LlmTest(unittest.TestCase):
         self.assertIn("Sources:", text)
         self.assertEqual(text.count("\n[1] "), 1)
 
+    def test_build_slice_evidence_packet_and_prompt(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        retrieval = search_archive_multi(config, ["123 Sample St", "bottom sheets"], limit=5)
+        windows = pack_chat_windows(config, retrieval.results, radius=2, seed_limit=2, max_windows=2, max_messages=8)
+        evidence = build_slice_evidence_packet(windows, limit=8, question="What did Seth send after the address?")
+        prompt = build_slice_reasoning_prompt("What did Seth send after the address?", windows, evidence)
+        self.assertGreaterEqual(len(evidence), 3)
+        self.assertIn("Window 1", prompt)
+        self.assertIn("[1] Seth @ 2026-05-11T14:22:00Z", prompt)
+        self.assertIn("bottom sheets", prompt)
+
+    def test_repair_list_answer_from_evidence_appends_missing_explicit_item(self) -> None:
+        answer = "For dinner, pick up:\n* Worcestershire Sauce [1]\n* 6 Chicken Legs [1]"
+        evidence = [
+            EvidenceItem("[1]", "msg-list", "chat-a", "Family logistics", "Seth", "2026-05-11T14:22:00Z", "Worcestershire Sauce; 6 Chicken Legs; Frozen Pizzas", 10.0)
+        ]
+        repaired = _repair_list_answer_from_evidence("What did she ask me to pick up from the store?", answer, evidence)
+        self.assertIn("Frozen Pizzas [1]", repaired)
+
+    def test_repair_address_answer_from_retrieval_extracts_address_when_model_misses(self) -> None:
+        retrieval = type("R", (), {
+            "results": [
+                type("Item", (), {
+                    "message_id": "msg-1",
+                    "text": "Olá Ana\nDeixo a morada da nossa sede: Rua do Alecrim n. 28C 1.ºDto 1200-018 Lisboa\nObrigada\nTeresa Roque\nPensão Amor - Grp Mainside",
+                    "sender_name": "Anna Bonewitz",
+                    "chat_name": "Anna Bonewitz",
+                    "score": 66.3,
+                })()
+            ]
+        })()
+        evidence = [
+            EvidenceItem("[1]", "msg-1", "chat-a", "Anna Bonewitz", "Anna Bonewitz", "2026-05-13T10:30:36.000Z", "Rua do Alecrim n. 28C 1.ºDto 1200-018 Lisboa", 66.3)
+        ]
+        repaired = _repair_address_answer_from_retrieval(
+            "What address was sent for Pensão Amor?",
+            "The provided evidence does not contain an address for Pensão Amor.",
+            retrieval,
+            evidence,
+        )
+        self.assertIn("Rua do Alecrim", repaired)
+        self.assertIn("1200-018 Lisboa", repaired)
+        self.assertIn("[1]", repaired)
+
     def test_ask_archive_uses_llm_and_evidence(self) -> None:
         config, tmpdir = self._config_with_data()
         self.addCleanup(tmpdir.cleanup)
@@ -187,6 +266,68 @@ class LlmTest(unittest.TestCase):
         )
         self.assertEqual(response.evidence, [])
         self.assertIn("could not find enough local evidence", response.answer.lower())
+
+    def test_ask_archive_can_answer_directly_from_memory_facts(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        response = ask_archive(
+            config,
+            "Who is Anna again?",
+            memory_state={
+                "facts": [
+                    {
+                        "subject": "Anna Bonewitz",
+                        "predicate": "relationship_to_user",
+                        "object": "sister",
+                        "source": "user-approved fact",
+                    }
+                ]
+            },
+        )
+        self.assertEqual(response.answer, "Anna Bonewitz is your sister.")
+        self.assertEqual(response.evidence, [])
+
+    def test_ask_archive_can_return_alias_confirmation_directly(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        response = ask_archive(
+            config,
+            "Remember that Addy is Adrienne Peña.",
+        )
+        self.assertIn("Please confirm before I save it.", response.answer)
+        self.assertIn("Addy → Adrienne Peña", response.answer)
+        self.assertEqual(response.evidence, [])
+
+    def test_ask_archive_can_rewrite_pronoun_followup_from_control_turns(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        response = ask_archive(
+            config,
+            "What address did she send?",
+            control_turns=[
+                {"role": "user", "content": "What address did Seth send?"},
+                {"role": "assistant", "content": "Seth sent 123 Sample St [1]."},
+            ],
+            llm_client=FakeLlmClient("Seth sent 123 Sample St [1]."),
+        )
+        self.assertEqual(response.answer, "Seth sent 123 Sample St [1].")
+        self.assertEqual(response.evidence[0].sender_name, "Seth")
+
+    def test_ask_archive_can_rewrite_topic_resume_followup(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        response = ask_archive(
+            config,
+            "Okay, go back to the store question.",
+            control_turns=[
+                {"role": "user", "content": "What store thing did Seth ask for?"},
+                {"role": "assistant", "content": "He asked for bottom sheets [1]."},
+                {"role": "user", "content": "What address did Seth send?"},
+                {"role": "assistant", "content": "Seth sent 123 Sample St [1]."},
+            ],
+            llm_client=FakeLlmClient("The store question was about bottom sheets [1]."),
+        )
+        self.assertEqual(response.answer, "The store question was about bottom sheets [1].")
 
     def test_llm_base_url_must_be_loopback(self) -> None:
         config, tmpdir = self._config_with_data()

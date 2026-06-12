@@ -11,8 +11,20 @@ from .beeper_api import BeeperApiClient
 from .config import AppConfig, ConfigError
 from .db import get_runtime_state, init_db_path, latest_sync_timestamp, open_db, set_runtime_state, utc_now
 from .llm import LlmError, ask_archive, format_ask_response
+from .memory import (
+    apply_pending_update,
+    clear_pending_update,
+    latest_pending_update,
+    load_memory_state,
+    looks_like_confirmation,
+    looks_like_rejection,
+    queue_alias_update,
+    recent_control_turns,
+    record_control_turn,
+)
 from .retrieval import format_find_response, search_archive
 from .sync import sync_chats
+from .tracing import finish_trace, trace_context, trace_event
 
 
 def log(message: str) -> None:
@@ -139,41 +151,54 @@ class ControlBridge:
             f"indexed_chats={indexed}, archive={self.config.archive.path}, llm={self.config.llm.model}"
         )
 
-    def _reply(self, text: str) -> None:
+    def _reply(self, text: str) -> str:
         payload = text[: self.config.bridge.max_reply_chars].rstrip()
         self.api_client.send_message(self.control_chat_id, payload)
         log(f"reply sent chars={len(payload)}")
+        return payload
 
-    def _handle_command(self, command: RemoteCommand) -> bool:
+    def _handle_command(self, command: RemoteCommand) -> str | None:
         if command.mode == "ignore":
-            return False
+            return None
         if command.mode == "help":
-            self._reply(self._help_text())
-            return True
+            return self._reply(self._help_text())
         if command.mode == "status":
-            self._reply(self._status_text())
-            return True
+            return self._reply(self._status_text())
         if command.mode == "reindex":
             self._reply(f"{self.config.bridge.reply_prefix}Syncing now...")
             self._maybe_sync(force=True)
-            self._reply(f"{self.config.bridge.reply_prefix}Sync complete.")
-            return True
+            return self._reply(f"{self.config.bridge.reply_prefix}Sync complete.")
         if command.mode == "find":
             self._maybe_sync()
-            self._reply(f"{self.config.bridge.reply_prefix}{format_find_response(search_archive(self.config, command.text))}")
-            return True
+            return self._reply(f"{self.config.bridge.reply_prefix}{format_find_response(search_archive(self.config, command.text))}")
         if command.mode == "ask":
+            pending = latest_pending_update(self.config)
+            if pending and looks_like_confirmation(command.text):
+                return self._reply(f"{self.config.bridge.reply_prefix}{apply_pending_update(self.config, pending)}")
+            if pending and looks_like_rejection(command.text):
+                clear_pending_update(self.config, pending.update_id, status="cancelled")
+                return self._reply(f"{self.config.bridge.reply_prefix}Okay. I did not save that memory update.")
+
             self._maybe_sync()
             try:
-                response = ask_archive(self.config, command.text)
+                response = ask_archive(
+                    self.config,
+                    command.text,
+                    control_turns=recent_control_turns(self.config, limit=8),
+                    memory_state=load_memory_state(self.config),
+                )
             except LlmError as exc:
                 lowered = str(exc).lower()
                 if "connection refused" in lowered:
-                    self._reply(f"{self.config.bridge.reply_prefix}The local model is starting up. Try again in a moment.")
-                    return True
+                    return self._reply(f"{self.config.bridge.reply_prefix}The local model is starting up. Try again in a moment.")
                 raise
-            self._reply(f"{self.config.bridge.reply_prefix}{format_ask_response(response)}")
-            return True
+            rendered = format_ask_response(response)
+            if command.text.casefold().startswith("remember that ") and "Please confirm before I save it." in response.answer:
+                import re as _re
+                match = _re.match(r"remember that\s+(.+?)\s+is\s+(.+?)\.?$", command.text.strip(), _re.IGNORECASE)
+                if match:
+                    queue_alias_update(self.config, match.group(1).strip(), match.group(2).strip(), source_text=command.text)
+            return self._reply(f"{self.config.bridge.reply_prefix}{rendered}")
         raise RuntimeError(f"Unknown command mode: {command.mode}")
 
     def process_once(self) -> BridgeLoopResult:
@@ -209,8 +234,27 @@ class ControlBridge:
             self.busy = True
             log(f"message handle sort_key={sort_key} mode={command.mode}")
             try:
-                if self._handle_command(command):
-                    replied += 1
+                with trace_context(self.config, command.mode, question=text, source="beeper-control") as trace:
+                    trace_event("bridge.message", {
+                        "sort_key": sort_key,
+                        "mode": command.mode,
+                        "message_id": str(message.get("id") or ""),
+                        "text": text,
+                    })
+                    record_control_turn(
+                        self.config,
+                        "user",
+                        text,
+                        chat_id=self.control_chat_id,
+                        message_id=str(message.get("id") or ""),
+                        sort_key=sort_key,
+                    )
+                    reply_text = self._handle_command(command)
+                    if reply_text is not None:
+                        replied += 1
+                        record_control_turn(self.config, "assistant", reply_text, chat_id=self.control_chat_id)
+                        trace_event("bridge.reply", {"text": reply_text})
+                        finish_trace(trace, status="ok", final_answer=reply_text)
             except Exception as exc:
                 log(f"message error sort_key={sort_key} mode={command.mode} error={exc}")
                 self._reply(f"{self.config.bridge.reply_prefix}Error: {exc}")

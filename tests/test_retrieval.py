@@ -11,6 +11,7 @@ from beeper_bot.retrieval import (
     expand_results_with_context,
     expand_results_with_spans,
     format_find_response,
+    pack_chat_windows,
     search_archive,
     search_archive_multi,
 )
@@ -164,6 +165,20 @@ class RetrievalTest(unittest.TestCase):
         self.assertEqual(response.results[0].sender_name, "Julie")
         self.assertEqual(response.results[0].message_id, "msg-2")
 
+    def test_search_archive_multi_can_apply_global_date_bounds(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+
+        response = search_archive_multi(
+            config,
+            ["Seth", "address", "check in"],
+            limit=10,
+            date_start="2026-05-12T00:00:00Z",
+            date_end="2026-05-12T23:59:59Z",
+        )
+        self.assertTrue(response.results)
+        self.assertTrue(all(item.timestamp.startswith("2026-05-12") for item in response.results))
+
     def test_expand_results_with_spans_adds_nearby_messages(self) -> None:
         config, tmpdir = self._config_with_data()
         self.addCleanup(tmpdir.cleanup)
@@ -174,6 +189,17 @@ class RetrievalTest(unittest.TestCase):
         self.assertTrue(any(item.message_id == "msg-4" for item in expanded))
         msg4 = next(item for item in expanded if item.message_id == "msg-4")
         self.assertIn("span-nearby", msg4.match_reasons)
+
+    def test_pack_chat_windows_merges_overlapping_seed_ranges(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+
+        response = search_archive_multi(config, ["123 Sample St", "key box code"], limit=5)
+        windows = pack_chat_windows(config, response.results, radius=1, seed_limit=2, max_windows=2, max_messages=10)
+
+        self.assertEqual(len(windows), 1)
+        self.assertEqual([item.message_id for item in windows[0].messages], ["msg-1", "msg-2", "msg-4"])
+        self.assertEqual(set(windows[0].seed_message_ids), {"msg-1", "msg-4"})
 
     def test_search_archive_empty_query(self) -> None:
         config, tmpdir = self._config_with_data()
