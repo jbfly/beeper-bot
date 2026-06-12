@@ -11,7 +11,7 @@ from typing import Iterator
 from .config import AppConfig, ensure_private_dir, ensure_private_file
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 @dataclass(slots=True)
@@ -119,7 +119,8 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             chat_id UNINDEXED,
             chat_name,
             sender_name,
-            text
+            text,
+            tokenize = 'porter unicode61'
         );
 
         CREATE TABLE IF NOT EXISTS people (
@@ -333,6 +334,37 @@ def migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
+    """Rebuild message_fts with porter stemming so morphological variants
+    match (owe/owes/owed). Porter only stems English suffixes; names,
+    addresses, and numbers are unaffected."""
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version >= 5:
+        return
+    conn.executescript(
+        """
+        BEGIN;
+        DROP TABLE IF EXISTS message_fts;
+        CREATE VIRTUAL TABLE message_fts USING fts5(
+            message_id UNINDEXED,
+            chat_id UNINDEXED,
+            chat_name,
+            sender_name,
+            text,
+            tokenize = 'porter unicode61'
+        );
+        INSERT INTO message_fts(message_id, chat_id, chat_name, sender_name, text)
+        SELECT m.message_id, m.chat_id, COALESCE(c.name, ''), COALESCE(m.sender_name, ''), m.text
+        FROM messages m
+        LEFT JOIN chats c ON c.chat_id = m.chat_id
+        WHERE m.text IS NOT NULL AND m.text != '';
+        COMMIT;
+        """
+    )
+    conn.execute("PRAGMA user_version = 5")
+    conn.commit()
+
+
 def init_db_path(db_path: Path) -> None:
     ensure_private_dir(db_path.parent)
     ensure_private_file(db_path)
@@ -340,15 +372,15 @@ def init_db_path(db_path: Path) -> None:
         version = int(conn.execute("PRAGMA user_version").fetchone()[0])
         if version == 0:
             initialize_database(conn)
-        elif version == 1:
+            return
+        if version == 1:
             migrate_v1_to_v2(conn)
+        if version <= 2:
             migrate_v2_to_v3(conn)
+        if version <= 3:
             migrate_v3_to_v4(conn)
-        elif version == 2:
-            migrate_v2_to_v3(conn)
-            migrate_v3_to_v4(conn)
-        elif version == 3:
-            migrate_v3_to_v4(conn)
+        if version <= 4:
+            migrate_v4_to_v5(conn)
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:

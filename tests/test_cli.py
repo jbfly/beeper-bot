@@ -75,7 +75,7 @@ class CliTest(unittest.TestCase):
             )
             payload = json.loads(completed.stdout)
             self.assertTrue(payload["database"]["file_exists"])
-            self.assertEqual(payload["database"]["schema_version"], 4)
+            self.assertEqual(payload["database"]["schema_version"], 5)
             self.assertEqual(payload["database"]["chat_count"], 0)
             self.assertEqual(payload["database"]["message_count"], 0)
 

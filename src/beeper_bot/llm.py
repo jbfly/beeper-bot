@@ -407,6 +407,7 @@ def build_planner_prompt(question: str, catalog: SearchCatalog, graph: PersonGra
         "search_queries should contain 3 to 8 short search strings when possible.\n"
         "Expand nicknames, tense changes, synonyms, and likely paraphrases.\n"
         "When a person is mentioned, set 'people' to their canonical names from the known people list below.\n"
+        "When the question asks what someone sent, gave, said, or shared, also put that person's name in preferred_senders, even if they are not in the known people list.\n"
         "answer_kind must be one of: fact, date, url, last-message, summary.\n"
         "Use 'url' when the question asks for a site, link, or web address.\n"
         "time_hint must be one of: recent, any.\n\n"

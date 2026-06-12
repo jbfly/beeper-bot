@@ -87,6 +87,15 @@ class RetrievalTest(unittest.TestCase):
                         "type": "TEXT",
                         "text": "The key box code is 56890 and check in starts from 2pm onwards.",
                     },
+                    {
+                        "id": "msg-5",
+                        "sortKey": "4",
+                        "timestamp": "2026-05-12T10:00:00Z",
+                        "senderID": "u4",
+                        "senderName": "Tom",
+                        "type": "TEXT",
+                        "text": "By my math Julie owes Seth fifty euros for the tickets.",
+                    },
                 ],
                 "chat-b": [
                     {
@@ -117,6 +126,14 @@ class RetrievalTest(unittest.TestCase):
         self.assertGreaterEqual(len(response.results), 1)
         self.assertEqual(response.results[0].message_id, "msg-1")
         self.assertIn("address-shape", response.results[0].match_reasons)
+
+    def test_search_archive_matches_morphological_variants(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+
+        response = search_archive(config, "Julie owe Seth")
+        self.assertGreaterEqual(len(response.results), 1)
+        self.assertEqual(response.results[0].message_id, "msg-5")
 
     def test_search_archive_finds_phone(self) -> None:
         config, tmpdir = self._config_with_data()
@@ -198,7 +215,7 @@ class RetrievalTest(unittest.TestCase):
         windows = pack_chat_windows(config, response.results, radius=1, seed_limit=2, max_windows=2, max_messages=10)
 
         self.assertEqual(len(windows), 1)
-        self.assertEqual([item.message_id for item in windows[0].messages], ["msg-1", "msg-2", "msg-4"])
+        self.assertEqual([item.message_id for item in windows[0].messages], ["msg-1", "msg-2", "msg-4", "msg-5"])
         self.assertEqual(set(windows[0].seed_message_ids), {"msg-1", "msg-4"})
 
     def test_search_archive_empty_query(self) -> None:
