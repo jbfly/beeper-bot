@@ -139,9 +139,43 @@ class ControlBridge:
         now = datetime.now(timezone.utc)
         return (now - then) > timedelta(seconds=DEFAULT_STALE_SECONDS)
 
-    def _maybe_sync(self, force: bool = False) -> None:
+    def _quick_sync_chat_ids(self) -> list[str] | None:
+        """Allowlisted chats that were synced before and have newer activity
+        per the live chat listing. Returns None when no listing is available
+        (caller should fall back to a full sync)."""
+        listing = self._all_chats()
+        if not listing:
+            return None
+        allowed = set(effective_indexed_chat_ids(self.config))
+        with open_db(self.config.archive.path) as conn:
+            rows = conn.execute("SELECT chat_id, last_synced_at FROM chats").fetchall()
+        synced_at = {str(row["chat_id"]): str(row["last_synced_at"] or "") for row in rows}
+        candidates: list[tuple[str, str]] = []
+        for chat in listing:
+            chat_id = str(chat.get("id") or "")
+            if chat_id not in allowed or chat_id not in synced_at:
+                continue
+            activity = str(chat.get("lastActivity") or "")
+            if activity and activity > synced_at[chat_id]:
+                candidates.append((activity, chat_id))
+        candidates.sort(reverse=True)
+        return [chat_id for _, chat_id in candidates[:10]]
+
+    def _maybe_sync(self, force: bool = False, quick: bool = False) -> None:
         if not force and not self._sync_is_stale():
             return
+        if quick and not force:
+            # Keep the ask path fast: only refresh already-known chats with
+            # new activity. First-time backfills belong to the periodic full
+            # sync in the serve loop.
+            chat_ids = self._quick_sync_chat_ids()
+            if chat_ids is not None:
+                if not chat_ids:
+                    return
+                log(f"quick sync chats={len(chat_ids)}")
+                result = sync_chats(self.config, self.api_client, chat_ids=chat_ids)
+                log(f"quick sync done fetched={result.total_fetched_messages} stored={result.total_stored_messages}")
+                return
         all_chats = self._all_chats() if self.config.beeper.auto_index_recent_days > 0 else None
         chat_ids = effective_indexed_chat_ids(self.config, all_chats)
         log(f"sync start force={int(force)} chats={len(chat_ids)}")
@@ -220,7 +254,7 @@ class ControlBridge:
             self._maybe_sync(force=True)
             return self._reply(f"{self.config.bridge.reply_prefix}Sync complete.")
         if command.mode == "find":
-            self._maybe_sync()
+            self._maybe_sync(quick=True)
             return self._reply(f"{self.config.bridge.reply_prefix}{format_find_response(search_archive(self.config, command.text))}")
         if command.mode == "index":
             all_chats = self._all_chats()
@@ -234,7 +268,7 @@ class ControlBridge:
             names = self._sync_chats_on_demand(matches)
             return self._reply(f"{self.config.bridge.reply_prefix}Indexed and synced: {', '.join(names)}.")
         if command.mode == "catchup":
-            self._maybe_sync()
+            self._maybe_sync(quick=True)
             try:
                 result = catchup_summary(self.config, command.text)
             except CatchupError as exc:
@@ -256,7 +290,7 @@ class ControlBridge:
                 # proposal; any other message retires it.
                 clear_pending_update(self.config, pending.update_id, status="superseded")
 
-            self._maybe_sync()
+            self._maybe_sync(quick=True)
             indexed_names = self._maybe_index_for_question(command.text)
             try:
                 response = ask_archive(
@@ -344,9 +378,14 @@ class ControlBridge:
 
     def serve_forever(self) -> None:
         poll_seconds = max(1, int(self.config.beeper.poll_seconds))
-        log(f"serve start poll_seconds={poll_seconds}")
+        sync_interval = max(poll_seconds, int(self.config.beeper.sync_interval_seconds))
+        log(f"serve start poll_seconds={poll_seconds} sync_interval_seconds={sync_interval}")
+        last_full_sync = 0.0
         while True:
             try:
+                if time.monotonic() - last_full_sync >= sync_interval:
+                    self._maybe_sync(force=True)
+                    last_full_sync = time.monotonic()
                 self.process_once()
             except Exception as exc:
                 log(f"serve loop error={exc}")
