@@ -1,0 +1,13 @@
+[Unit]
+Description=Wake alpha from Matrix control-room activity
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/jbfly/.local/bin/alpha-matrix-wake serve
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

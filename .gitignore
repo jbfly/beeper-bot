@@ -10,3 +10,4 @@ state/
 logs/
 *.log
 .DS_Store
+*.egg-info/
