@@ -18,6 +18,8 @@ See:
 - `docs/technical-plan.md`
 - `docs/implementation-plan.md`
 - `docs/control-chat-memory-and-eval-plan.md`
+- `docs/remote-alpha-workflow.md`
+- `docs/alpha-matrix-wake-listener.md`
 
 ## Local model endpoint
 
@@ -38,3 +40,13 @@ Run the starter benchmark suite:
 - `beeper-bot --config ~/.config/beeper-bot/config.toml eval --suite eval/starter.json`
 - add `--json` for machine-readable output
 - add `--output state/eval-latest.json` to save a run
+
+Current deterministic baseline on the live local Gemma stack:
+
+- `starter`: `8/8` scored passed, `2` diagnostic/info cases
+- `core`: `20/20` scored passed
+- `slice`: `14/14` scored passed
+- `control-memory`: `3/3` scored passed (first-pass plumbing check; scored via deterministic paths, not yet a model baseline — see plan §4.4)
+- `context-ladder`: `9/9` scored passed, `3` stress cases left metrics-only (same caveat)
+
+Use `--deterministic` for comparison runs. That pins answer and planner temperatures to `0.0` unless explicitly overridden.
