@@ -158,6 +158,13 @@ def _upsert_message(conn: sqlite3.Connection, chat_id: str, chat_name: str, mess
             """,
             (message_id, chat_id, chat_name, str(message.get("senderName", "") or ""), text),
         )
+    # Media messages carry transcript/description text derived after ingest;
+    # the upsert above just overwrote it with the raw payload text, so put it
+    # back.
+    if str(message.get("type", "")) in ("VOICE", "IMAGE", "VIDEO", "FILE"):
+        from .media import reapply_derived_text
+
+        reapply_derived_text(conn, message_id)
     return True
 
 

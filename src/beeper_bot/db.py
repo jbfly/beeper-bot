@@ -11,7 +11,7 @@ from typing import Iterator
 from .config import AppConfig, ensure_private_dir, ensure_private_file
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 @dataclass(slots=True)
@@ -208,6 +208,23 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             gpu_temp_c REAL,
             error_text TEXT NOT NULL DEFAULT ''
         );
+
+        CREATE TABLE IF NOT EXISTS attachment_derived_text (
+            derived_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            attachment_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'done',
+            derived_text TEXT NOT NULL DEFAULT '',
+            model_alias TEXT NOT NULL DEFAULT '',
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            duration_seconds REAL,
+            error_text TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(message_id, attachment_id)
+        );
         COMMIT;
         """
     )
@@ -365,6 +382,36 @@ def migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version >= 6:
+        return
+    conn.executescript(
+        """
+        BEGIN;
+        CREATE TABLE IF NOT EXISTS attachment_derived_text (
+            derived_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            attachment_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'done',
+            derived_text TEXT NOT NULL DEFAULT '',
+            model_alias TEXT NOT NULL DEFAULT '',
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            duration_seconds REAL,
+            error_text TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(message_id, attachment_id)
+        );
+        COMMIT;
+        """
+    )
+    conn.execute("PRAGMA user_version = 6")
+    conn.commit()
+
+
 def init_db_path(db_path: Path) -> None:
     ensure_private_dir(db_path.parent)
     ensure_private_file(db_path)
@@ -381,6 +428,8 @@ def init_db_path(db_path: Path) -> None:
             migrate_v3_to_v4(conn)
         if version <= 4:
             migrate_v4_to_v5(conn)
+        if version <= 5:
+            migrate_v5_to_v6(conn)
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:

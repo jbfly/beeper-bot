@@ -20,6 +20,13 @@ Beyond archive QA, the control chat supports:
 - on-the-fly indexing: questions that name an unindexed chat trigger a sync
 - `auto_index_recent_days` config: automatically index recently active chats
 
+Voice memos and images become searchable text via
+`beeper-bot index-media --kind voice|image` — attachments are fetched
+through the Beeper Desktop API (`/v1/assets/serve`, which also decrypts),
+transcribed/described by the local model in bounded chunks, and indexed
+into FTS so `/ask`, `/find`, and `/catchup` see them like any other
+message.
+
 See:
 - `docs/technical-plan.md`
 - `docs/implementation-plan.md`

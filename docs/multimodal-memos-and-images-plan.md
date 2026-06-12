@@ -95,14 +95,40 @@ All three modalities work through the unchanged `llama-server` API, so the
 bot can reach them with the existing `OpenAiCompatLlmClient` plus an
 `input_audio`/`image_url` content-part extension.
 
-## 6. Open questions
+## 6. Attachment access (answered 2026-06-12)
 
-- real transcription quality on actual Beeper voice memos (codec, noise);
-  espeak audio is a worst-case synthetic input
-- per-request audio duration cap; chunking policy beyond ~30 s
-- image token budget settings appropriate for chat photos
-- throughput: seconds of audio per second of wall time on the local card
-- whether the Beeper Desktop local API exposes attachment download URLs for
-  voice memos and images in indexed chats
-- whether the 12B holds up on the text suites (run the full eval matrix
-  against `gemma4-google-12b-q6_k-local` as the first real shootout entry)
+The Beeper Desktop API fully supports attachment download:
+
+- some attachments carry `srcURL: file:///home/.../BeeperTexts/media/...`
+  — already on disk, readable directly (all sampled paths existed)
+- the rest carry `mxc://` URLs with an inline `encryptedFileInfoJSON`;
+  `GET /v1/assets/serve?url=<urlencoded mxc>` downloads **and decrypts**
+  them (verified on a real 1.5 MB encrypted WhatsApp voice memo)
+- voice memos are Ogg Opus mono 48 kHz; ffmpeg converts to the 16 kHz mono
+  WAV the model wants
+- a real 3m20s memo chunk transcribed cleanly through the 12B
+
+## 7. Implementation (landed 2026-06-12)
+
+- schema v6: `attachment_derived_text` (provenance: attachment id, model
+  alias, chunk count, duration, status, error)
+- `media.py`: `fetch_attachment` (file:// or assets/serve with an
+  on-disk cache), chunked transcription (28 s windows, 2 s overlap, max 20
+  chunks ≈ 8.7 min, truncation note beyond that), image description with
+  verbatim-text quoting, derivation passes with done/failed/skipped status
+- derived text is written into `messages.text` and the FTS row, so
+  retrieval, slice windows, catchup digests, and evals all see transcripts
+  with zero changes; sync re-applies derived text after upserts overwrite
+  media rows
+- CLI: `beeper-bot index-media --kind voice|image --limit N [--chat X]`
+- trace events carry metadata only, never base64 payloads
+
+## 8. Open questions
+
+- image pass at scale: 1,291 images x ~6 s is hours of GPU time; run in
+  batches (`--limit`), recent chats first, and decide whether stickers/GIFs
+  stay excluded
+- whether to auto-derive new voice memos in the serve loop (blocks the
+  poll while transcribing) or via a timer
+- eval suite for media-derived answers, following plan §4.4 answer-path
+  rules

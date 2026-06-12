@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from beeper_bot.db import SCHEMA_VERSION
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENV = os.environ.copy()
@@ -75,7 +77,7 @@ class CliTest(unittest.TestCase):
             )
             payload = json.loads(completed.stdout)
             self.assertTrue(payload["database"]["file_exists"])
-            self.assertEqual(payload["database"]["schema_version"], 5)
+            self.assertEqual(payload["database"]["schema_version"], SCHEMA_VERSION)
             self.assertEqual(payload["database"]["chat_count"], 0)
             self.assertEqual(payload["database"]["message_count"], 0)
 

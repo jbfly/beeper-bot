@@ -58,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--once", action="store_true", help="Run one poll pass and exit")
     serve.add_argument("--json", action="store_true", help="Print machine-readable output for --once")
 
+    media = subparsers.add_parser("index-media", help="Transcribe voice memos / describe images into the archive")
+    media.add_argument("--kind", choices=["voice", "image"], default="voice", help="Attachment kind to process (default: voice)")
+    media.add_argument("--limit", type=int, default=10, help="Maximum attachments to process this run (default: 10)")
+    media.add_argument("--chat", default="", help="Only process attachments from chats whose title matches this")
+
     catchup = subparsers.add_parser("catchup", help="Summarize a chat since the last catch-up")
     catchup.add_argument("chat", nargs="+", help="Chat title or part of it")
     catchup.add_argument("--since-sort-key", type=int, default=None, help="Override the stored cursor for this run")
@@ -411,6 +416,22 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_ask(config_path, args.question, args.limit, args.json)
         if args.command == "serve":
             return cmd_serve(config_path, args.once, args.json)
+        if args.command == "index-media":
+            from .media import run_derivation_pass
+
+            config = load_config(config_path)
+            kind = "voice-memo" if args.kind == "voice" else "image"
+            results = run_derivation_pass(config, kind, limit=args.limit, chat_query=args.chat)
+            if not results:
+                print("No pending attachments to process.")
+                return 0
+            for item in results:
+                preview = item.derived_text[:100].replace("\n", " ")
+                detail = f" ({item.chunk_count} chunks, {item.duration_seconds:.0f}s)" if item.duration_seconds else ""
+                print(f"{item.status}: {item.message_id}{detail} {preview or item.error_text}")
+            done = sum(1 for item in results if item.status == "done")
+            print(f"Processed {len(results)} attachment(s), {done} derived.")
+            return 0
         if args.command == "catchup":
             from .catchup import catchup_summary, format_catchup_result
 
