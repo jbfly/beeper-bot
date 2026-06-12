@@ -73,12 +73,36 @@ matrix as the headroom challenger against the 26B A4B baseline: the
 context-ladder suite (honest baselines, post de-shim) is the comparison
 instrument.
 
-## 5. Open questions to settle during the smoke test
+## 5. Smoke test results (2026-06-12)
 
-- llama-server audio request shape and per-request duration cap
-- real transcription quality on actual Beeper voice memos (codec, noise)
-- image token budget settings (`IMAGE_MIN_TOKENS`/`IMAGE_MAX_TOKENS`)
-  appropriate for chat photos
+Setup: `gemma-4-12b-it-Q6_K.gguf` (9.8 GB) plus `mmproj-F16.gguf` from
+`unsloth/gemma-4-12b-it-GGUF`, downloaded to
+`~/models/hf/unsloth/gemma-4-12b-it-GGUF/`, registered as
+`ai-ops/llama-serve/models/gemma4_12b_q6k.env`
+(alias `gemma4-google-12b-q6_k-local`), served by the existing llama.cpp
+build (b9566, 2026-06-08) behind the 8090 proxy. Switch with
+`ai-model gemma4_12b_q6k`; switch back with `ai-model gemma4`.
+
+- text: instruction-following smoke passed
+- image: read both lines of a rendered text image verbatim
+  ("MEET AT PIER 39", "CODE: 7421")
+- audio: OpenAI-compatible `input_audio` (16 kHz mono WAV) works through
+  the proxy; a deliberately hard espeak-synthesized memo transcribed with
+  one substitution error ("dry cleaning" for "olive oil"), the rest
+  verbatim
+
+All three modalities work through the unchanged `llama-server` API, so the
+bot can reach them with the existing `OpenAiCompatLlmClient` plus an
+`input_audio`/`image_url` content-part extension.
+
+## 6. Open questions
+
+- real transcription quality on actual Beeper voice memos (codec, noise);
+  espeak audio is a worst-case synthetic input
+- per-request audio duration cap; chunking policy beyond ~30 s
+- image token budget settings appropriate for chat photos
 - throughput: seconds of audio per second of wall time on the local card
 - whether the Beeper Desktop local API exposes attachment download URLs for
   voice memos and images in indexed chats
+- whether the 12B holds up on the text suites (run the full eval matrix
+  against `gemma4-google-12b-q6_k-local` as the first real shootout entry)
