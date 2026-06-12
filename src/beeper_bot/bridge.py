@@ -8,8 +8,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from .beeper_api import BeeperApiClient
+from .catchup import CatchupError, catchup_summary, format_catchup_result
 from .config import AppConfig, ConfigError
 from .db import get_runtime_state, init_db_path, latest_sync_timestamp, open_db, set_runtime_state, utc_now
+from .discovery import add_dynamic_indexed_chat_ids, effective_indexed_chat_ids, match_unindexed_chats
 from .llm import LlmError, ask_archive, format_ask_response
 from .memory import (
     apply_pending_update,
@@ -60,6 +62,8 @@ class ControlBridge:
         self.config = config
         self.api_client = api_client or BeeperApiClient(config.beeper)
         self.busy = False
+        self._chat_listing: list[dict] = []
+        self._chat_listing_at: float = 0.0
         log(f"bridge init control_chat={config.beeper.control_chat_id or 'unset'} indexed_chats={len(config.beeper.indexed_chat_ids)}")
 
     @property
@@ -93,6 +97,10 @@ class ControlBridge:
             return RemoteCommand("find", stripped[len("/find "):].strip())
         if stripped.startswith("/ask "):
             return RemoteCommand("ask", stripped[len("/ask "):].strip())
+        if stripped.startswith("/index "):
+            return RemoteCommand("index", stripped[len("/index "):].strip())
+        if stripped.startswith("/catchup "):
+            return RemoteCommand("catchup", stripped[len("/catchup "):].strip())
         return RemoteCommand("ask", stripped)
 
     def _latest_sort_key(self, messages: list[dict]) -> int | None:
@@ -134,14 +142,53 @@ class ControlBridge:
     def _maybe_sync(self, force: bool = False) -> None:
         if not force and not self._sync_is_stale():
             return
-        log(f"sync start force={int(force)} chats={len(self.config.beeper.indexed_chat_ids)}")
-        result = sync_chats(self.config, self.api_client)
+        all_chats = self._all_chats() if self.config.beeper.auto_index_recent_days > 0 else None
+        chat_ids = effective_indexed_chat_ids(self.config, all_chats)
+        log(f"sync start force={int(force)} chats={len(chat_ids)}")
+        result = sync_chats(self.config, self.api_client, chat_ids=chat_ids)
         log(f"sync done fetched={result.total_fetched_messages} stored={result.total_stored_messages}")
+
+    def _all_chats(self) -> list[dict]:
+        if self._chat_listing and (time.monotonic() - self._chat_listing_at) < 600:
+            return self._chat_listing
+        fetch = getattr(self.api_client, "fetch_all_chats", None)
+        if fetch is None:
+            return []
+        try:
+            self._chat_listing = fetch()
+            self._chat_listing_at = time.monotonic()
+        except Exception as exc:
+            log(f"chat listing failed: {exc}")
+            return []
+        return self._chat_listing
+
+    def _sync_chats_on_demand(self, chats: list[dict]) -> list[str]:
+        chat_ids = [str(chat.get("id") or "").strip() for chat in chats]
+        chat_ids = [chat_id for chat_id in chat_ids if chat_id]
+        if not chat_ids:
+            return []
+        add_dynamic_indexed_chat_ids(self.config, chat_ids)
+        sync_chats(self.config, self.api_client, chat_ids=chat_ids)
+        return [str(chat.get("title") or chat_id) for chat, chat_id in zip(chats, chat_ids)]
+
+    def _maybe_index_for_question(self, question: str) -> list[str]:
+        all_chats = self._all_chats()
+        if not all_chats:
+            return []
+        indexed = set(effective_indexed_chat_ids(self.config))
+        matches = match_unindexed_chats(question, all_chats, indexed)
+        if not matches:
+            return []
+        names = self._sync_chats_on_demand(matches)
+        log(f"on-demand index: {', '.join(names)}")
+        trace_event("index.on_demand", {"question": question, "chats": names})
+        return names
 
     def _help_text(self) -> str:
         return (
             f"{self.config.bridge.reply_prefix}Commands: plain text or /ask <question> = answer from local archive, "
-            f"/find <query> = search archive, /status = runtime status, /reindex = force sync, /help = this help."
+            f"/find <query> = search archive, /catchup <chat> = digest of a chat since last catch-up, "
+            f"/index <chat> = add a Beeper chat to the archive, /status = runtime status, /reindex = force sync, /help = this help."
         )
 
     def _status_text(self) -> str:
@@ -171,6 +218,28 @@ class ControlBridge:
         if command.mode == "find":
             self._maybe_sync()
             return self._reply(f"{self.config.bridge.reply_prefix}{format_find_response(search_archive(self.config, command.text))}")
+        if command.mode == "index":
+            all_chats = self._all_chats()
+            query = command.text.casefold()
+            matches = [
+                chat for chat in all_chats
+                if query and query in str(chat.get("title") or "").casefold()
+            ][:5]
+            if not matches:
+                return self._reply(f"{self.config.bridge.reply_prefix}No Beeper chat title matches '{command.text}'.")
+            names = self._sync_chats_on_demand(matches)
+            return self._reply(f"{self.config.bridge.reply_prefix}Indexed and synced: {', '.join(names)}.")
+        if command.mode == "catchup":
+            self._maybe_sync()
+            try:
+                result = catchup_summary(self.config, command.text)
+            except CatchupError as exc:
+                return self._reply(f"{self.config.bridge.reply_prefix}{exc}")
+            except LlmError as exc:
+                if "connection refused" in str(exc).lower():
+                    return self._reply(f"{self.config.bridge.reply_prefix}The local model is starting up. Try again in a moment.")
+                raise
+            return self._reply(f"{self.config.bridge.reply_prefix}{format_catchup_result(result)}")
         if command.mode == "ask":
             pending = latest_pending_update(self.config)
             if pending and looks_like_confirmation(command.text):
@@ -184,6 +253,7 @@ class ControlBridge:
                 clear_pending_update(self.config, pending.update_id, status="superseded")
 
             self._maybe_sync()
+            indexed_names = self._maybe_index_for_question(command.text)
             try:
                 response = ask_archive(
                     self.config,
@@ -197,6 +267,8 @@ class ControlBridge:
                     return self._reply(f"{self.config.bridge.reply_prefix}The local model is starting up. Try again in a moment.")
                 raise
             rendered = format_ask_response(response)
+            if indexed_names:
+                rendered = f"(Synced new chat{'s' if len(indexed_names) > 1 else ''} on the fly: {', '.join(indexed_names)})\n{rendered}"
             if response.proposed_action:
                 queue_proposed_action(self.config, response.proposed_action)
             return self._reply(f"{self.config.bridge.reply_prefix}{rendered}")

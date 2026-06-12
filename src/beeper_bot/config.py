@@ -31,6 +31,8 @@ class BeeperConfig:
     history_fetch_limit: int = 500
     history_backfill_pages: int = 20
     http_timeout_seconds: int = 30
+    auto_index_recent_days: int = 0
+    auto_index_max_chats: int = 100
 
 
 @dataclass(slots=True)
@@ -164,6 +166,8 @@ def load_config(path: Path | str | None = None) -> AppConfig:
             history_fetch_limit=_int_value(beeper_raw, "history_fetch_limit", 500),
             history_backfill_pages=_int_value(beeper_raw, "history_backfill_pages", 20),
             http_timeout_seconds=_int_value(beeper_raw, "http_timeout_seconds", 30),
+            auto_index_recent_days=_int_value(beeper_raw, "auto_index_recent_days", 0),
+            auto_index_max_chats=_int_value(beeper_raw, "auto_index_max_chats", 100),
         ),
         archive=ArchiveConfig(
             path=_path_value(archive_raw, "path", DEFAULT_DB_PATH),

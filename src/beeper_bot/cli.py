@@ -58,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--once", action="store_true", help="Run one poll pass and exit")
     serve.add_argument("--json", action="store_true", help="Print machine-readable output for --once")
 
+    catchup = subparsers.add_parser("catchup", help="Summarize a chat since the last catch-up")
+    catchup.add_argument("chat", nargs="+", help="Chat title or part of it")
+    catchup.add_argument("--since-sort-key", type=int, default=None, help="Override the stored cursor for this run")
+    catchup.add_argument("--no-cursor-update", action="store_true", help="Do not advance the stored cursor")
+
     console = subparsers.add_parser("console", help="Run the local operator console")
     console.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     console.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
@@ -406,6 +411,18 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_ask(config_path, args.question, args.limit, args.json)
         if args.command == "serve":
             return cmd_serve(config_path, args.once, args.json)
+        if args.command == "catchup":
+            from .catchup import catchup_summary, format_catchup_result
+
+            config = load_config(config_path)
+            result = catchup_summary(
+                config,
+                " ".join(args.chat),
+                since_sort_key=args.since_sort_key,
+                update_cursor=not args.no_cursor_update,
+            )
+            print(format_catchup_result(result))
+            return 0
         if args.command == "console":
             config = load_config(config_path)
             serve_console(config, host=args.host, port=args.port, sample_seconds=args.sample_seconds)

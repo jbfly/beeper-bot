@@ -14,10 +14,18 @@ Run a private agent behind a Beeper control chat. The agent indexes selected Bee
 - answer through a private Beeper control chat
 - use the local `ai-ops` `llama.cpp` proxy on `127.0.0.1:8090` for synthesis
 
+Beyond archive QA, the control chat supports:
+- `/catchup <chat>`: digest of a group chat since the last catch-up
+- `/index <chat>`: add any Beeper chat to the archive at runtime
+- on-the-fly indexing: questions that name an unindexed chat trigger a sync
+- `auto_index_recent_days` config: automatically index recently active chats
+
 See:
 - `docs/technical-plan.md`
 - `docs/implementation-plan.md`
 - `docs/control-chat-memory-and-eval-plan.md`
+- `docs/chat-coverage-plan.md`
+- `docs/multimodal-memos-and-images-plan.md`
 - `docs/remote-alpha-workflow.md`
 - `docs/alpha-matrix-wake-listener.md`
 
@@ -54,8 +62,19 @@ all control-memory and ladder cases now genuinely reach the model, see
   rungs, which is the real context-pressure signal the suite exists to
   measure (the earlier `9/9` was scored against deterministic shims)
 
+- `catchup`: `5/5` scored passed (real Bom Sucesso group-chat digests)
+
 `anna_owed_john` fails because FTS has no stemming (`owe` does not match
 `owes` in a third-party message); switching `message_fts` to a porter
 tokenizer is the identified fix and needs a schema migration.
+
+First shootout entry — Gemma 4 12B Q6_K (`state/eval-12b/`, same
+deterministic settings): starter 6/8, core 18/20, slice 14/14,
+control-routing 3/3, control-memory 8/8, catchup 5/5, context-ladder 3/9.
+Within noise of the 26B baseline on low-pressure suites (it passes
+`anna_owed_john`, fails `adriana_address`/`tom_automation_link` instead),
+one rung worse under context pressure, roughly 2x slower per case (dense
+12B vs the 26B's 4B-active MoE), but it adds native audio and ~5 GB more
+VRAM headroom.
 
 Use `--deterministic` for comparison runs. That pins answer and planner temperatures to `0.0` unless explicitly overridden.

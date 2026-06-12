@@ -53,6 +53,9 @@ class EvalCase:
     expected_sources: list[str] = field(default_factory=list)
     expected_path: str = ""
     context_budget_class: str = ""
+    mode: str = "ask"
+    catchup_chat_query: str = ""
+    catchup_since_sort_key: int | None = None
 
 
 @dataclass(slots=True)
@@ -184,6 +187,13 @@ def load_eval_suite(path: Path | str) -> EvalSuite:
                 expected_sources=_string_list(item.get("expected_sources")),
                 expected_path=str(item.get("expected_path") or "").strip().casefold(),
                 context_budget_class=str(item.get("context_budget_class") or "").strip(),
+                mode=str(item.get("mode") or "ask").strip().casefold() or "ask",
+                catchup_chat_query=str(item.get("catchup_chat_query") or "").strip(),
+                catchup_since_sort_key=(
+                    int(item["catchup_since_sort_key"])
+                    if item.get("catchup_since_sort_key") not in (None, "")
+                    else None
+                ),
             )
         )
 
@@ -477,15 +487,41 @@ def _check_case(case: EvalCase, response: AskResponse) -> tuple[dict[str, bool],
     return checks, failures, inferred_sources, inferred_actions
 
 
+def _catchup_response(config: AppConfig, case: EvalCase, llm_client: LlmClient | None) -> AskResponse:
+    from .catchup import catchup_summary
+    from .planning import QueryPlan
+    from .retrieval import SearchResponse
+
+    result = catchup_summary(
+        config,
+        case.catchup_chat_query or case.question,
+        llm_client,
+        since_sort_key=case.catchup_since_sort_key,
+        update_cursor=False,
+    )
+    return AskResponse(
+        question=case.question,
+        answer=result.summary,
+        evidence=[],
+        retrieval=SearchResponse(query=case.question, results=[]),
+        plan=QueryPlan(normalized_question=case.question, answer_kind="summary"),
+        used_sources=["archive"],
+        answer_path="model" if result.message_count else "direct",
+    )
+
+
 def evaluate_case(config: AppConfig, case: EvalCase, llm_client: LlmClient | None = None) -> EvalCaseResult:
     started = time.perf_counter()
-    response = ask_archive(
-        config,
-        case.question,
-        llm_client=llm_client,
-        control_turns=case.control_turns,
-        memory_state=case.memory_state,
-    )
+    if case.mode == "catchup":
+        response = _catchup_response(config, case, llm_client)
+    else:
+        response = ask_archive(
+            config,
+            case.question,
+            llm_client=llm_client,
+            control_turns=case.control_turns,
+            memory_state=case.memory_state,
+        )
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     checks, failures, inferred_sources, inferred_actions = _check_case(case, response)
     passed = all(checks.values()) if case.score_case and case.enabled and not case.metrics_only else False
