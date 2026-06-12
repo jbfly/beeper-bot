@@ -180,6 +180,85 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(result.replied_messages, 1)
             self.assertIn("Saved alias: Addy → Adrienne Peña.", client.sent_messages[-1][1])
 
+    def test_confirmation_tolerates_punctuation_and_casing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = load_config(self._write_config(tmpdir))
+            client = FakeBeeperClient(
+                chats={
+                    "control-chat": {"title": "Control"},
+                    "indexed-chat": {"title": "Indexed"},
+                },
+                messages={
+                    "control-chat": [
+                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "bootstrap"},
+                    ],
+                    "indexed-chat": [],
+                },
+            )
+            bridge = ControlBridge(config, api_client=client)
+            bridge.process_once()
+            client.messages["control-chat"].append(
+                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "Remember that Addy is Adrienne Peña."}
+            )
+            bridge.process_once()
+            client.messages["control-chat"].append(
+                {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "Yes, save it."}
+            )
+            bridge.process_once()
+            self.assertIn("Saved alias: Addy → Adrienne Peña.", client.sent_messages[-1][1])
+
+    def test_unrelated_message_supersedes_pending_update(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = load_config(self._write_config(tmpdir))
+            client = FakeBeeperClient(
+                chats={
+                    "control-chat": {"title": "Control"},
+                    "indexed-chat": {"title": "Indexed"},
+                },
+                messages={
+                    "control-chat": [
+                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "bootstrap"},
+                    ],
+                    "indexed-chat": [],
+                },
+            )
+            bridge = ControlBridge(config, api_client=client)
+            bridge.process_once()
+            client.messages["control-chat"].append(
+                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "Remember that Addy is Adrienne Peña."}
+            )
+            bridge.process_once()
+
+            import beeper_bot.bridge as bridge_mod
+            from beeper_bot.llm import AskResponse
+            from beeper_bot.planning import QueryPlan
+            from beeper_bot.retrieval import SearchResponse
+
+            original = bridge_mod.ask_archive
+
+            def canned_ask_archive(config, question, **kwargs):
+                return AskResponse(
+                    question=question,
+                    answer="Some unrelated answer.",
+                    evidence=[],
+                    retrieval=SearchResponse(query=question, results=[]),
+                    plan=QueryPlan(normalized_question=question),
+                )
+
+            bridge_mod.ask_archive = canned_ask_archive
+            try:
+                client.messages["control-chat"].append(
+                    {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "What is the weather like?"}
+                )
+                bridge.process_once()
+                client.messages["control-chat"].append(
+                    {"id": "c4", "sortKey": "4", "timestamp": "2026-06-05T18:03:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "yes"}
+                )
+                bridge.process_once()
+            finally:
+                bridge_mod.ask_archive = original
+            self.assertNotIn("Saved alias", client.sent_messages[-1][1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,7 @@ class QueryPlan:
     preferred_chats: list[str] = field(default_factory=list)
     answer_kind: str = "fact"
     time_hint: str = "any"
+    resolved_question: str = ""
 
     def all_queries(self, original_question: str) -> list[str]:
         seen: set[str] = set()

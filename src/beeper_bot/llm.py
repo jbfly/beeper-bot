@@ -59,6 +59,8 @@ class AskResponse:
     retrieval: SearchResponse
     plan: QueryPlan
     used_sources: list[str] = field(default_factory=list)
+    answer_path: str = "model"
+    proposed_action: dict | None = None
 
 
 class LlmClient(Protocol):
@@ -400,11 +402,13 @@ def build_planner_prompt(question: str, catalog: SearchCatalog, graph: PersonGra
     return (
         "Plan retrieval for a private local chat archive.\n"
         "Return one JSON object only. No markdown.\n"
-        "Use these keys exactly: normalized_question, search_queries, people, chat_hints, preferred_senders, preferred_chats, answer_kind, time_hint.\n"
+        "Use these keys exactly: normalized_question, resolved_question, search_queries, people, chat_hints, preferred_senders, preferred_chats, answer_kind, time_hint.\n"
+        "If the question is a follow-up that depends on the recent control-chat context (pronouns like 'she' or 'it', ordinals like 'the second one', or requests like 'go back to that'), set resolved_question to a fully self-contained rewrite that names the people and topics explicitly. Otherwise set resolved_question to an empty string.\n"
         "search_queries should contain 3 to 8 short search strings when possible.\n"
         "Expand nicknames, tense changes, synonyms, and likely paraphrases.\n"
         "When a person is mentioned, set 'people' to their canonical names from the known people list below.\n"
         "answer_kind must be one of: fact, date, url, last-message, summary.\n"
+        "Use 'url' when the question asks for a site, link, or web address.\n"
         "time_hint must be one of: recent, any.\n\n"
         f"Known people:\n{person_block}\n\n"
         f"All sender names:\n{sender_block}\n\n"
@@ -442,6 +446,7 @@ def parse_query_plan(raw: str, original_question: str) -> QueryPlan:
         preferred_chats=list_of_strings(payload.get("preferred_chats")),
         answer_kind=answer_kind,
         time_hint=str(payload.get("time_hint") or "any").strip() or "any",
+        resolved_question=str(payload.get("resolved_question") or "").strip(),
     )
 
 
@@ -588,6 +593,11 @@ def _fact_objects_for_subject(memory_state: dict[str, Any] | None, subject_hint:
 
 
 def _direct_memory_answer(question: str, memory_state: dict[str, Any] | None) -> AskResponse | None:
+    """Deterministic product routing for the canonical 'who is X (again)?' lookup.
+
+    Only the exact command shape short-circuits here; paraphrases go through
+    the model with memory facts in the control context.
+    """
     lowered = question.casefold().strip()
     match = re.match(r"who is\s+(.+?)\s+again\??$", lowered)
     if not match:
@@ -618,16 +628,41 @@ def _direct_memory_answer(question: str, memory_state: dict[str, Any] | None) ->
         retrieval=_empty_retrieval(question),
         plan=_direct_plan(question, answer_kind="fact"),
         used_sources=["memory"],
+        answer_path="direct",
     )
+
+
+RELATIONSHIP_OBJECT_RE = re.compile(r"^(?:my|our)\s+([A-Za-zÀ-ÿ' -]+)$", re.IGNORECASE)
 
 
 def _direct_memory_write_answer(question: str) -> AskResponse | None:
     match = re.match(r"remember that\s+(.+?)\s+is\s+(.+?)\.?$", question.strip(), re.IGNORECASE)
     if not match:
         return None
-    alias = match.group(1).strip()
-    canonical = match.group(2).strip()
-    answer = f"I can save that as an alias: {alias} → {canonical}. Please confirm before I save it."
+    subject = match.group(1).strip()
+    target = match.group(2).strip()
+
+    relationship_match = RELATIONSHIP_OBJECT_RE.match(target)
+    if relationship_match:
+        relationship = relationship_match.group(1).strip()
+        answer = (
+            f"I can save that relationship: {subject} is your {relationship}. "
+            "Please confirm before I save it."
+        )
+        proposed_action = {
+            "kind": "add-relationship-fact",
+            "subject": subject,
+            "relationship": relationship,
+            "source_text": question.strip(),
+        }
+    else:
+        answer = f"I can save that as an alias: {subject} → {target}. Please confirm before I save it."
+        proposed_action = {
+            "kind": "add-alias",
+            "alias": subject,
+            "canonical_name": target,
+            "source_text": question.strip(),
+        }
     return AskResponse(
         question=question,
         answer=answer,
@@ -635,38 +670,9 @@ def _direct_memory_write_answer(question: str) -> AskResponse | None:
         retrieval=_empty_retrieval(question),
         plan=_direct_plan(question, answer_kind="fact"),
         used_sources=[],
+        answer_path="direct",
+        proposed_action=proposed_action,
     )
-
-
-def _rewrite_followup_question(question: str, control_turns: list[dict[str, Any]] | None, memory_state: dict[str, Any] | None) -> str:
-    turns = control_turns or []
-    stripped = question.strip()
-    lowered = stripped.casefold()
-
-    if re.fullmatch(r"what address did she send\??", lowered):
-        for item in reversed(turns):
-            if str(item.get("role") or "") != "user":
-                continue
-            content = str(item.get("content") or "").strip()
-            if re.search(r"what address did\s+.+\s+send\??$", content, re.IGNORECASE):
-                return content
-
-    match = re.match(r"(?:okay,?\s*)?(?:now\s+)?go back to the\s+(.+?)\s+question\.?$", stripped, re.IGNORECASE)
-    if match:
-        topic = match.group(1).strip().casefold()
-        for item in reversed(turns):
-            if str(item.get("role") or "") != "user":
-                continue
-            content = str(item.get("content") or "").strip()
-            if content.casefold() == lowered:
-                continue
-            if topic in content.casefold():
-                return content
-        summary = str((memory_state or {}).get("control_summary") or "")
-        if topic and topic in summary.casefold():
-            return f"What was the {topic} question?"
-
-    return stripped
 
 
 def _format_control_context(
@@ -722,7 +728,7 @@ def build_answer_prompt(
     evidence_block = "\n".join(
         f"{item.citation_id} [{item.chat_name}] {item.sender_name} @ {item.timestamp}: {item.excerpt}"
         for item in evidence
-    )
+    ) or "(no archive evidence was retrieved for this question)"
     context_line = f"\nPerson context: {person_context}\n" if person_context else ""
     control_line = f"\nControl-memory context:\n{control_context}\n" if control_context else ""
     return (
@@ -731,6 +737,8 @@ def build_answer_prompt(
         "Each citation refers only to the anchor message line for that evidence item.\n"
         "Nested context bullets are background only.\n"
         "Control-memory context is not archive evidence. Do not pretend it came from an archive citation.\n"
+        "Structured memory facts in the control-memory context are user-approved. You may answer from them directly, without a citation, when they answer the question.\n"
+        "Do not guess relationships or personal facts: if the question asks who someone is or how they relate to the user, and neither the evidence nor the control-memory context covers it, say you do not have that information stored.\n"
         "If the evidence is partial, say what the evidence does support and what remains unclear.\n"
         "Only say the evidence is insufficient when the evidence truly does not support even a partial answer.\n"
         "When the evidence contains an explicit total, amount, code, email, address, app name, or URL, quote that explicit value verbatim.\n"
@@ -754,7 +762,7 @@ def build_verification_prompt(
     evidence_block = "\n".join(
         f"{item.citation_id} [{item.chat_name}] {item.sender_name} @ {item.timestamp}: {item.excerpt}"
         for item in evidence
-    )
+    ) or "(no archive evidence was retrieved for this question)"
     context_line = f"\nPerson context: {person_context}\n" if person_context else ""
     control_line = f"\nControl-memory context:\n{control_context}\n" if control_context else ""
     return (
@@ -763,6 +771,7 @@ def build_verification_prompt(
         "Each citation refers only to the anchor message line for that evidence item.\n"
         "Nested context bullets are background only.\n"
         "Control-memory context is not archive evidence. Do not convert it into fake archive citations.\n"
+        "Claims supported by structured memory facts in the control-memory context are valid; keep them, without adding citations to them.\n"
         "Strip any unsupported claims, names, dates, or facts.\n"
         "If a claim in the original answer is wrong, replace it with what the evidence actually says.\n"
         "If the evidence contains an explicit shopping list, preserve every explicit requested item that answers the question.\n"
@@ -1214,24 +1223,25 @@ def ask_archive(
         if memory_state is None:
             memory_state = load_memory_state(config)
 
-    effective_question = _rewrite_followup_question(question, control_turns, memory_state)
-    trace_event("control.context", {"control_turns": control_turns or [], "memory_state": memory_state or {}, "effective_question": effective_question})
+    trace_event("control.context", {"control_turns": control_turns or [], "memory_state": memory_state or {}})
 
-    direct = _direct_memory_write_answer(effective_question)
+    direct = _direct_memory_write_answer(question)
     if direct is not None:
-        direct.question = question
-        trace_event("memory.direct_write", {"question": question, "answer": direct.answer})
+        trace_event("memory.direct_write", {"question": question, "answer": direct.answer, "proposed_action": direct.proposed_action})
         return direct
 
-    direct = _direct_memory_answer(effective_question, memory_state)
+    direct = _direct_memory_answer(question, memory_state)
     if direct is not None:
-        direct.question = question
         trace_event("memory.direct_answer", {"question": question, "answer": direct.answer})
         return direct
 
     control_context = _format_control_context(control_turns, memory_state)
     planner_client = llm_client if llm_client and hasattr(llm_client, "plan_query") else None
-    plan = plan_archive_query(config, effective_question, planner_client, control_context=control_context)  # type: ignore[arg-type]
+    plan = plan_archive_query(config, question, planner_client, control_context=control_context)  # type: ignore[arg-type]
+    effective_question = question
+    if control_context and plan.resolved_question:
+        effective_question = plan.resolved_question
+        trace_event("planner.resolved_question", {"question": question, "resolved_question": effective_question})
     graph = load_person_graph(config)
     resolved_people = graph.find_people(plan.people)
     preferred_senders = list(dict.fromkeys(plan.preferred_senders + [p.canonical_name for p in resolved_people]))
@@ -1308,7 +1318,7 @@ def ask_archive(
         evidence_limit = max(config.llm.max_input_snippets, 8) if slice_mode else config.llm.max_input_snippets
         evidence = build_evidence_packet(retrieval.results, evidence_limit, question=effective_question)
     trace_event("evidence.packet", {"count": len(evidence), "items": [_trace_evidence_item(item) for item in evidence]})
-    if not evidence:
+    if not evidence and not control_context:
         trace_event("ask.no_evidence", {"question": question})
         return AskResponse(
             question=question,
@@ -1318,6 +1328,8 @@ def ask_archive(
             plan=plan,
             used_sources=[],
         )
+    if not evidence:
+        trace_event("ask.memory_only", {"question": question})
 
     client = llm_client or OpenAiCompatLlmClient()
     resolved_people = graph.find_people(plan.people)
@@ -1342,22 +1354,13 @@ def ask_archive(
     if repaired != answer:
         trace_event("answer.address_repair", {"question": question, "before": answer, "after": repaired})
         answer = repaired
-    used_sources = ["archive"]
-    continuity_markers = (
-        "what address did she send",
-        "go back to the",
-        "who is",
-        "again",
-    )
-    lowered_question = question.casefold()
-    if control_turns and any(marker in lowered_question for marker in continuity_markers):
-        used_sources.append("control-turns")
-    summary_text = str((memory_state or {}).get("control_summary") or "").strip()
-    user_turn_count = sum(1 for item in (control_turns or []) if str(item.get("role") or "") == "user")
-    if summary_text and (any(marker in lowered_question for marker in continuity_markers) or user_turn_count >= 3):
-        used_sources.append("summary")
-    if isinstance((memory_state or {}).get("facts"), list) and any(marker in lowered_question for marker in ("who is", "again", "addy")):
-        used_sources.append("memory")
+    # Only claim sources that are verifiable from the answer itself; deeper
+    # source-use inference (memory/summary/control-turn overlap) lives in the
+    # eval harness where the fixtures are known.
+    used_sources: list[str] = []
+    valid_citation_ids = {item.citation_id for item in evidence}
+    if any(f"[{match}]" in valid_citation_ids for match in CITATION_RE.findall(answer)):
+        used_sources.append("archive")
 
     trace_event("ask.final", {"question": question, "answer": answer, "used_sources": used_sources})
     return AskResponse(question=question, answer=answer, evidence=evidence, retrieval=retrieval, plan=plan, used_sources=used_sources)

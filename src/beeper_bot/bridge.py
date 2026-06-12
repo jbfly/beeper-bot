@@ -18,7 +18,7 @@ from .memory import (
     load_memory_state,
     looks_like_confirmation,
     looks_like_rejection,
-    queue_alias_update,
+    queue_proposed_action,
     recent_control_turns,
     record_control_turn,
 )
@@ -178,6 +178,10 @@ class ControlBridge:
             if pending and looks_like_rejection(command.text):
                 clear_pending_update(self.config, pending.update_id, status="cancelled")
                 return self._reply(f"{self.config.bridge.reply_prefix}Okay. I did not save that memory update.")
+            if pending:
+                # A confirmation only applies to the immediately preceding
+                # proposal; any other message retires it.
+                clear_pending_update(self.config, pending.update_id, status="superseded")
 
             self._maybe_sync()
             try:
@@ -193,11 +197,8 @@ class ControlBridge:
                     return self._reply(f"{self.config.bridge.reply_prefix}The local model is starting up. Try again in a moment.")
                 raise
             rendered = format_ask_response(response)
-            if command.text.casefold().startswith("remember that ") and "Please confirm before I save it." in response.answer:
-                import re as _re
-                match = _re.match(r"remember that\s+(.+?)\s+is\s+(.+?)\.?$", command.text.strip(), _re.IGNORECASE)
-                if match:
-                    queue_alias_update(self.config, match.group(1).strip(), match.group(2).strip(), source_text=command.text)
+            if response.proposed_action:
+                queue_proposed_action(self.config, response.proposed_action)
             return self._reply(f"{self.config.bridge.reply_prefix}{rendered}")
         raise RuntimeError(f"Unknown command mode: {command.mode}")
 

@@ -41,12 +41,21 @@ Run the starter benchmark suite:
 - add `--json` for machine-readable output
 - add `--output state/eval-latest.json` to save a run
 
-Current deterministic baseline on the live local Gemma stack:
+Current deterministic baseline on the live local Gemma stack (post de-shim;
+all control-memory and ladder cases now genuinely reach the model, see
+`docs/control-chat-memory-and-eval-plan.md` §4.4):
 
-- `starter`: `8/8` scored passed, `2` diagnostic/info cases
-- `core`: `20/20` scored passed
+- `starter`: `6/8` scored passed (known borderline: `anna_owed_john`, `addy_and_i_may18`)
+- `core`: `18/20` scored passed (known borderline: `anna_owed_john`, `pensao_amor_address`)
 - `slice`: `14/14` scored passed
-- `control-memory`: `3/3` scored passed (first-pass plumbing check; scored via deterministic paths, not yet a model baseline — see plan §4.4)
-- `context-ladder`: `9/9` scored passed, `3` stress cases left metrics-only (same caveat)
+- `control-routing`: `3/3` passed (deterministic product routing, no LLM)
+- `control-memory`: `8/8` scored passed through the model path
+- `context-ladder`: `4/9` scored passed; families degrade at the medium/long
+  rungs, which is the real context-pressure signal the suite exists to
+  measure (the earlier `9/9` was scored against deterministic shims)
+
+`anna_owed_john` fails because FTS has no stemming (`owe` does not match
+`owes` in a third-party message); switching `message_fts` to a porter
+tokenizer is the identified fix and needs a schema migration.
 
 Use `--deterministic` for comparison runs. That pins answer and planner temperatures to `0.0` unless explicitly overridden.

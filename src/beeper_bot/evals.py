@@ -51,6 +51,7 @@ class EvalCase:
     memory_state: dict[str, Any] = field(default_factory=dict)
     expected_actions: list[str] = field(default_factory=list)
     expected_sources: list[str] = field(default_factory=list)
+    expected_path: str = ""
     context_budget_class: str = ""
 
 
@@ -85,6 +86,8 @@ class EvalCaseResult:
     inferred_actions: list[str]
     expected_sources: list[str]
     inferred_sources: list[str]
+    expected_path: str
+    answer_path: str
     context_budget_class: str
 
 
@@ -179,6 +182,7 @@ def load_eval_suite(path: Path | str) -> EvalSuite:
                 memory_state=_dict_value(item.get("memory_state")),
                 expected_actions=_string_list(item.get("expected_actions")),
                 expected_sources=_string_list(item.get("expected_sources")),
+                expected_path=str(item.get("expected_path") or "").strip().casefold(),
                 context_budget_class=str(item.get("context_budget_class") or "").strip(),
             )
         )
@@ -210,6 +214,13 @@ def _infer_answer_actions(case: EvalCase, response: AskResponse) -> list[str]:
     answer = response.answer.strip().casefold()
     inferred: list[str] = []
 
+    proposed = getattr(response, "proposed_action", None)
+    if isinstance(proposed, dict):
+        kind = str(proposed.get("kind") or "").strip()
+        if kind:
+            inferred.append(kind)
+            inferred.append("confirm-memory-write")
+
     confirm_markers = (
         "confirm",
         "please confirm",
@@ -225,8 +236,6 @@ def _infer_answer_actions(case: EvalCase, response: AskResponse) -> list[str]:
     alias_markers = (
         "alias",
         "remember that",
-        "remember addy as",
-        "addy is an alias",
         "alias for",
         "refers to",
     )
@@ -315,6 +324,13 @@ def _check_case(case: EvalCase, response: AskResponse) -> tuple[dict[str, bool],
     failures: list[str] = []
 
     inferred_actions = _infer_answer_actions(case, response)
+
+    answer_path = getattr(response, "answer_path", "model") or "model"
+    checks["answer_path"] = True
+    if case.expected_path:
+        checks["answer_path"] = answer_path == case.expected_path
+        if not checks["answer_path"]:
+            failures.append(f"answer path was '{answer_path}', expected '{case.expected_path}'")
 
     checks["min_evidence"] = len(evidence) >= max(0, case.min_evidence)
     if not checks["min_evidence"]:
@@ -530,6 +546,8 @@ def evaluate_case(config: AppConfig, case: EvalCase, llm_client: LlmClient | Non
         inferred_actions=inferred_actions,
         expected_sources=list(case.expected_sources),
         inferred_sources=inferred_sources,
+        expected_path=case.expected_path,
+        answer_path=getattr(response, "answer_path", "model") or "model",
         context_budget_class=case.context_budget_class,
     )
 

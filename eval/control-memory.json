@@ -1,14 +1,15 @@
 {
   "name": "control-memory",
-  "description": "Control-chat continuity, structured memory, and safe memory-update cases.",
+  "description": "Model-scored control-chat continuity and structured-memory use. Every case must reach the model (expected_path 'model'); a deterministic shortcut resolution fails the case. Paraphrase variants exist to catch question-literal overfitting in application code.",
   "cases": [
     {
-      "id": "recent_followup_pronoun",
+      "id": "followup_pronoun_address",
       "question": "What address did she send?",
       "tags": ["control-memory", "continuity"],
-      "notes": "Follow-up should resolve 'she' from the recent control-chat window, not from archive-wide heuristics.",
+      "notes": "Follow-up must resolve 'she' from the retained control-chat window via the planner, not from question-literal heuristics.",
       "enabled": true,
       "score_case": true,
+      "expected_path": "model",
       "control_turns": [
         {"role": "user", "content": "What address did Adriana send?"},
         {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."}
@@ -18,14 +19,47 @@
       "answer_contains_any": ["Rua Afonso", "Afonso enes"]
     },
     {
-      "id": "relationship_fact_lookup",
-      "question": "Who is Anna again?",
-      "tags": ["control-memory", "structured-memory"],
-      "notes": "Relationship fact should come from stored memory, not from archive citations.",
+      "id": "followup_pronoun_address_paraphrase",
+      "question": "And what was the address she sent again?",
+      "tags": ["control-memory", "continuity", "paraphrase"],
+      "notes": "Held-out paraphrase of followup_pronoun_address. Same intent, different surface form.",
+      "enabled": true,
+      "score_case": true,
+      "expected_path": "model",
+      "control_turns": [
+        {"role": "user", "content": "What address did Adriana send?"},
+        {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."}
+      ],
+      "expected_sources": ["archive", "control-turns"],
+      "context_budget_class": "short",
+      "answer_contains_any": ["Rua Afonso", "Afonso enes"]
+    },
+    {
+      "id": "followup_pronoun_address_reminder",
+      "question": "Can you remind me which address she sent over?",
+      "tags": ["control-memory", "continuity", "paraphrase"],
+      "notes": "Second held-out paraphrase of the pronoun follow-up.",
+      "enabled": true,
+      "score_case": true,
+      "expected_path": "model",
+      "control_turns": [
+        {"role": "user", "content": "What address did Adriana send?"},
+        {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."}
+      ],
+      "expected_sources": ["archive", "control-turns"],
+      "context_budget_class": "short",
+      "answer_contains_any": ["Rua Afonso", "Afonso enes"]
+    },
+    {
+      "id": "relationship_fact_paraphrase",
+      "question": "How is Anna related to me?",
+      "tags": ["control-memory", "structured-memory", "paraphrase"],
+      "notes": "Relationship fact must come from stored memory through the model path; phrased to avoid the canonical 'who is X' routing shape.",
       "enabled": true,
       "score_case": true,
       "min_evidence": 0,
       "require_citation": false,
+      "expected_path": "model",
       "memory_state": {
         "facts": [
           {
@@ -41,17 +75,124 @@
       "answer_contains_any": ["sister"]
     },
     {
-      "id": "alias_add_confirmation",
-      "question": "Remember that Addy is Adrienne Peña.",
-      "tags": ["control-memory", "memory-write"],
-      "notes": "Natural-language memory writes should ask for confirmation unless they are already structured and unambiguous commands.",
+      "id": "relationship_fact_verification",
+      "question": "Is Anna my cousin or my sister?",
+      "tags": ["control-memory", "structured-memory", "paraphrase"],
+      "notes": "Model must pick the stored relationship over the wrong alternative offered in the question.",
       "enabled": true,
       "score_case": true,
       "min_evidence": 0,
       "require_citation": false,
-      "expected_actions": ["confirm-memory-write", "add-alias"],
+      "expected_path": "model",
+      "memory_state": {
+        "facts": [
+          {
+            "subject": "Anna Bonewitz",
+            "predicate": "relationship_to_user",
+            "object": "sister",
+            "source": "user-approved fact"
+          }
+        ]
+      },
+      "expected_sources": ["memory"],
       "context_budget_class": "short",
-      "answer_contains_any": ["confirm", "remember"]
+      "answer_contains_any": ["sister"]
+    },
+    {
+      "id": "unstored_relationship_refusal",
+      "question": "How is Marcus related to me?",
+      "tags": ["control-memory", "structured-memory", "hallucination"],
+      "notes": "No stored fact about Marcus exists. The model must say it does not have that information rather than inventing a relationship.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "model",
+      "memory_state": {
+        "facts": [
+          {
+            "subject": "Anna Bonewitz",
+            "predicate": "relationship_to_user",
+            "object": "sister",
+            "source": "user-approved fact"
+          }
+        ]
+      },
+      "context_budget_class": "short",
+      "answer_contains_any": [
+        "don't have",
+        "do not have",
+        "no stored",
+        "not stored",
+        "don't know",
+        "do not know",
+        "could not find",
+        "couldn't find",
+        "unknown",
+        "not have that information",
+        "no information"
+      ],
+      "answer_not_contains": ["Marcus is your sister", "Marcus is your brother", "Marcus is your cousin"]
+    },
+    {
+      "id": "alias_identity_use",
+      "question": "Tell me who Addy is.",
+      "tags": ["control-memory", "structured-memory", "paraphrase"],
+      "notes": "Identity and relationship facts must be combined from memory through the model path; phrased to avoid the canonical lookup shape.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "model",
+      "memory_state": {
+        "facts": [
+          {
+            "subject": "Addy",
+            "predicate": "identity",
+            "object": "Adrienne Peña",
+            "source": "user-approved fact"
+          },
+          {
+            "subject": "Adrienne Peña",
+            "predicate": "relationship_to_user",
+            "object": "girlfriend",
+            "source": "user-approved fact"
+          }
+        ]
+      },
+      "expected_sources": ["memory"],
+      "context_budget_class": "short",
+      "answer_contains_any": ["Adrienne", "girlfriend"]
+    },
+    {
+      "id": "mixed_source_paraphrase",
+      "question": "Remind me who Addy is, and what address did she send?",
+      "tags": ["control-memory", "mixed-source", "paraphrase"],
+      "notes": "Relationship comes from structured memory; the address comes from archive retrieval with a citation. Sources must not be conflated.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 1,
+      "require_citation": true,
+      "expected_path": "model",
+      "memory_state": {
+        "facts": [
+          {
+            "subject": "Addy",
+            "predicate": "identity",
+            "object": "Adrienne Peña",
+            "source": "user-approved fact"
+          },
+          {
+            "subject": "Adrienne Peña",
+            "predicate": "relationship_to_user",
+            "object": "girlfriend",
+            "source": "user-approved fact"
+          }
+        ]
+      },
+      "expected_sources": ["memory", "archive"],
+      "context_budget_class": "short",
+      "answer_contains_any": ["girlfriend", "Adrienne"]
     }
   ]
 }

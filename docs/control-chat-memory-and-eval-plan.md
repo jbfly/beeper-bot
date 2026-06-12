@@ -109,11 +109,16 @@ Rules:
 - each model-scored behavior needs held-out paraphrase variants so a regex
   shim cannot quietly satisfy the suite
 
-Status note: the first-pass control-memory and ladder results predate these
-rules. `control-memory 3/3` and parts of `context-ladder 9/9` were scored
-against deterministic shortcut paths (`_direct_memory_answer`,
-`_rewrite_followup_question`) and are plumbing checks, not model baselines.
-Do not compare future model runs against those numbers.
+Status note: the first-pass control-memory and ladder results predated these
+rules and were scored against deterministic shortcut paths. After the
+de-shim (2026-06-12) the honest deterministic baseline on the 26B stack is:
+starter 6/8, core 18/20, slice 14/14, control-routing 3/3 (direct),
+control-memory 8/8 (model path), context-ladder 4/9 with families failing at
+the medium/long rungs. The ladder drop from the shimmed 9/9 is expected and
+is the suite working as designed. Known borderline archive cases
+(`anna_owed_john`, `pensao_amor_address`, `addy_and_i_may18`) trace to
+planner-output sensitivity and missing FTS stemming, not to the memory
+layer.
 
 ## 5. New eval classes
 

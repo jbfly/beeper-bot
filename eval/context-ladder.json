@@ -31,7 +31,8 @@
       "answer_contains_any": [
         "Rua Afonso",
         "Afonso enes"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "pronoun_address_medium",
@@ -82,7 +83,8 @@
       "answer_contains_any": [
         "Rua Afonso",
         "Afonso enes"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "pronoun_address_long",
@@ -149,7 +151,8 @@
       "answer_contains_any": [
         "Rua Afonso",
         "Afonso enes"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "pronoun_address_stress",
@@ -175,7 +178,8 @@
       "answer_contains_any": [
         "Rua Afonso",
         "Afonso enes"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "topic_resume_short",
@@ -213,7 +217,8 @@
       "context_budget_class": "short",
       "answer_contains_any": [
         "store"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "topic_resume_medium",
@@ -263,7 +268,8 @@
       "context_budget_class": "medium",
       "answer_contains_any": [
         "store"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "topic_resume_long",
@@ -329,7 +335,8 @@
       "context_budget_class": "long",
       "answer_contains_any": [
         "store"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "topic_resume_stress",
@@ -354,7 +361,8 @@
       "context_budget_class": "stress",
       "answer_contains_any": [
         "store"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "mixed_source_short",
@@ -392,7 +400,8 @@
         "girlfriend",
         "Adrienne",
         "Addy"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "mixed_source_medium",
@@ -451,7 +460,8 @@
         "girlfriend",
         "Adrienne",
         "Addy"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "mixed_source_long",
@@ -526,7 +536,8 @@
         "girlfriend",
         "Adrienne",
         "Addy"
-      ]
+      ],
+      "expected_path": "model"
     },
     {
       "id": "mixed_source_stress",
@@ -568,7 +579,8 @@
         "girlfriend",
         "Adrienne",
         "Addy"
-      ]
+      ],
+      "expected_path": "model"
     }
   ]
 }

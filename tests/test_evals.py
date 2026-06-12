@@ -375,6 +375,57 @@ class EvalTest(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertIn("answer missing expected actions: add-alias, confirm-memory-write", result.failures)
 
+    def test_model_scored_case_fails_when_resolved_by_direct_path(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        case = EvalCase(
+            case_id="memory-lookup-direct-path",
+            question="Who is Anna again?",
+            min_evidence=0,
+            require_citation=False,
+            expected_path="model",
+            memory_state={
+                "facts": [
+                    {
+                        "subject": "Anna Bonewitz",
+                        "predicate": "relationship_to_user",
+                        "object": "sister",
+                        "source": "user-approved fact",
+                    }
+                ]
+            },
+            answer_contains_any=["sister"],
+        )
+        result = evaluate_case(config, case, llm_client=FakeLlmClient("unused"))
+        self.assertEqual(result.answer_path, "direct")
+        self.assertFalse(result.passed)
+        self.assertIn("answer path was 'direct', expected 'model'", result.failures)
+
+    def test_direct_path_case_passes_when_expected(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        case = EvalCase(
+            case_id="memory-lookup-direct-ok",
+            question="Who is Anna again?",
+            min_evidence=0,
+            require_citation=False,
+            expected_path="direct",
+            memory_state={
+                "facts": [
+                    {
+                        "subject": "Anna Bonewitz",
+                        "predicate": "relationship_to_user",
+                        "object": "sister",
+                        "source": "user-approved fact",
+                    }
+                ]
+            },
+            answer_contains_any=["sister"],
+        )
+        result = evaluate_case(config, case, llm_client=FakeLlmClient("unused"))
+        self.assertEqual(result.answer_path, "direct")
+        self.assertTrue(result.passed)
+
 
 if __name__ == "__main__":
     unittest.main()

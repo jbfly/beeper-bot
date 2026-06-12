@@ -297,8 +297,26 @@ class LlmTest(unittest.TestCase):
         self.assertIn("Please confirm before I save it.", response.answer)
         self.assertIn("Addy → Adrienne Peña", response.answer)
         self.assertEqual(response.evidence, [])
+        self.assertEqual(response.answer_path, "direct")
+        self.assertEqual(response.proposed_action["kind"], "add-alias")
+        self.assertEqual(response.proposed_action["alias"], "Addy")
+        self.assertEqual(response.proposed_action["canonical_name"], "Adrienne Peña")
 
-    def test_ask_archive_can_rewrite_pronoun_followup_from_control_turns(self) -> None:
+    def test_ask_archive_proposes_relationship_fact_not_alias(self) -> None:
+        config, tmpdir = self._config_with_data()
+        self.addCleanup(tmpdir.cleanup)
+        response = ask_archive(
+            config,
+            "Remember that Anna is my sister.",
+        )
+        self.assertIn("Please confirm before I save it.", response.answer)
+        self.assertNotIn("alias", response.answer)
+        self.assertEqual(response.answer_path, "direct")
+        self.assertEqual(response.proposed_action["kind"], "add-relationship-fact")
+        self.assertEqual(response.proposed_action["subject"], "Anna")
+        self.assertEqual(response.proposed_action["relationship"], "sister")
+
+    def test_ask_archive_uses_planner_resolved_question_for_followups(self) -> None:
         config, tmpdir = self._config_with_data()
         self.addCleanup(tmpdir.cleanup)
         response = ask_archive(
@@ -308,26 +326,50 @@ class LlmTest(unittest.TestCase):
                 {"role": "user", "content": "What address did Seth send?"},
                 {"role": "assistant", "content": "Seth sent 123 Sample St [1]."},
             ],
-            llm_client=FakeLlmClient("Seth sent 123 Sample St [1]."),
+            llm_client=FakeLlmClient(
+                "Seth sent 123 Sample St [1].",
+                plan=QueryPlan(
+                    normalized_question="",
+                    search_queries=[],
+                    preferred_senders=["Seth"],
+                    answer_kind="fact",
+                    time_hint="any",
+                    resolved_question="What address did Seth send?",
+                ),
+            ),
         )
         self.assertEqual(response.answer, "Seth sent 123 Sample St [1].")
+        self.assertEqual(response.answer_path, "model")
         self.assertEqual(response.evidence[0].sender_name, "Seth")
 
-    def test_ask_archive_can_rewrite_topic_resume_followup(self) -> None:
+    def test_ask_archive_answers_memory_question_through_model(self) -> None:
         config, tmpdir = self._config_with_data()
         self.addCleanup(tmpdir.cleanup)
         response = ask_archive(
             config,
-            "Okay, go back to the store question.",
-            control_turns=[
-                {"role": "user", "content": "What store thing did Seth ask for?"},
-                {"role": "assistant", "content": "He asked for bottom sheets [1]."},
-                {"role": "user", "content": "What address did Seth send?"},
-                {"role": "assistant", "content": "Seth sent 123 Sample St [1]."},
-            ],
-            llm_client=FakeLlmClient("The store question was about bottom sheets [1]."),
+            "How is Anna related to me?",
+            memory_state={
+                "facts": [
+                    {
+                        "subject": "Anna Bonewitz",
+                        "predicate": "relationship_to_user",
+                        "object": "sister",
+                        "source": "user-approved fact",
+                    }
+                ]
+            },
+            llm_client=FakeLlmClient(
+                "Anna is your sister.",
+                plan=QueryPlan(
+                    normalized_question="How is Anna related to me?",
+                    search_queries=["zz-no-archive-match-zz"],
+                    answer_kind="fact",
+                    time_hint="any",
+                ),
+            ),
         )
-        self.assertEqual(response.answer, "The store question was about bottom sheets [1].")
+        self.assertEqual(response.answer, "Anna is your sister.")
+        self.assertEqual(response.answer_path, "model")
 
     def test_llm_base_url_must_be_loopback(self) -> None:
         config, tmpdir = self._config_with_data()

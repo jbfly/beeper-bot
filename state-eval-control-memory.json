@@ -1,0 +1,2202 @@
+{
+  "description": "Model-scored control-chat continuity and structured-memory use. Every case must reach the model (expected_path 'model'); a deterministic shortcut resolution fails the case. Paraphrase variants exist to catch question-literal overfitting in application code.",
+  "enabled_cases": 8,
+  "failed_cases": 0,
+  "family_summaries": [
+    {
+      "failed_cases": 0,
+      "family_id": "alias_identity_use",
+      "first_failed_rung": "",
+      "passed_cases": 1,
+      "rung_results": {
+        "short": {
+          "case_id": "alias_identity_use",
+          "elapsed_ms": 1699,
+          "metrics_only": false,
+          "passed": true,
+          "scored": true
+        }
+      },
+      "scored_cases": 1
+    },
+    {
+      "failed_cases": 0,
+      "family_id": "followup_pronoun_address",
+      "first_failed_rung": "",
+      "passed_cases": 1,
+      "rung_results": {
+        "short": {
+          "case_id": "followup_pronoun_address",
+          "elapsed_ms": 2027,
+          "metrics_only": false,
+          "passed": true,
+          "scored": true
+        }
+      },
+      "scored_cases": 1
+    },
+    {
+      "failed_cases": 0,
+      "family_id": "followup_pronoun_address_paraphrase",
+      "first_failed_rung": "",
+      "passed_cases": 1,
+      "rung_results": {
+        "short": {
+          "case_id": "followup_pronoun_address_paraphrase",
+          "elapsed_ms": 1913,
+          "metrics_only": false,
+          "passed": true,
+          "scored": true
+        }
+      },
+      "scored_cases": 1
+    },
+    {
+      "failed_cases": 0,
+      "family_id": "followup_pronoun_address_reminder",
+      "first_failed_rung": "",
+      "passed_cases": 1,
+      "rung_results": {
+        "short": {
+          "case_id": "followup_pronoun_address_reminder",
+          "elapsed_ms": 1913,
+          "metrics_only": false,
+          "passed": true,
+          "scored": true
+        }
+      },
+      "scored_cases": 1
+    },
+    {
+      "failed_cases": 0,
+      "family_id": "mixed_source_paraphrase",
+      "first_failed_rung": "",
+      "passed_cases": 1,
+      "rung_results": {
+        "short": {
+          "case_id": "mixed_source_paraphrase",
+          "elapsed_ms": 2673,
+          "metrics_only": false,
+          "passed": true,
+          "scored": true
+        }
+      },
+      "scored_cases": 1
+    },
+    {
+      "failed_cases": 0,
+      "family_id": "relationship_fact_paraphrase",
+      "first_failed_rung": "",
+      "passed_cases": 1,
+      "rung_results": {
+        "short": {
+          "case_id": "relationship_fact_paraphrase",
+          "elapsed_ms": 1485,
+          "metrics_only": false,
+          "passed": true,
+          "scored": true
+        }
+      },
+      "scored_cases": 1
+    },
+    {
+      "failed_cases": 0,
+      "family_id": "relationship_fact_verification",
+      "first_failed_rung": "",
+      "passed_cases": 1,
+      "rung_results": {
+        "short": {
+          "case_id": "relationship_fact_verification",
+          "elapsed_ms": 1637,
+          "metrics_only": false,
+          "passed": true,
+          "scored": true
+        }
+      },
+      "scored_cases": 1
+    },
+    {
+      "failed_cases": 0,
+      "family_id": "unstored_relationship_refusal",
+      "first_failed_rung": "",
+      "passed_cases": 1,
+      "rung_results": {
+        "short": {
+          "case_id": "unstored_relationship_refusal",
+          "elapsed_ms": 1404,
+          "metrics_only": false,
+          "passed": true,
+          "scored": true
+        }
+      },
+      "scored_cases": 1
+    }
+  ],
+  "passed_cases": 8,
+  "results": [
+    {
+      "answer": "Adriana sent Rua Afonso enes n\u00b017 R/c [1].",
+      "answer_path": "model",
+      "case_id": "followup_pronoun_address",
+      "checks": {
+        "answer_contains_all": true,
+        "answer_contains_any": true,
+        "answer_contains_pool": true,
+        "answer_not_contains": true,
+        "answer_path": true,
+        "citation_required": true,
+        "evidence_chat_any": true,
+        "evidence_sender_any": true,
+        "expected_actions": true,
+        "min_evidence": true,
+        "plan_answer_kind_any": true,
+        "plan_people_all": true,
+        "plan_people_any": true,
+        "plan_preferred_chat_any": true,
+        "plan_preferred_sender_any": true,
+        "plan_time_hint_any": true,
+        "source_classes_expected": true,
+        "source_classes_no_fake_archive": true,
+        "top_evidence_chat_any": true,
+        "top_evidence_sender_any": true
+      },
+      "context_budget_class": "short",
+      "control_turns": [
+        {
+          "content": "What address did Adriana send?",
+          "role": "user"
+        },
+        {
+          "content": "Adriana sent Rua Afonso enes n\u00b017 R/c [1].",
+          "role": "assistant"
+        }
+      ],
+      "elapsed_ms": 2027,
+      "enabled": true,
+      "evidence": [
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[1]",
+          "excerpt": "Rua Afonso enes n\u00b017 R/c\nContext before:\n- Anna Bonewitz @ 2026-04-19T19:51:30.000Z: Oh, ok!\n- Anna Bonewitz @ 2026-04-19T19:51:43.000Z: What is your address? It might be too late of notice, but I can try!\n- Anna Bonewitz @ 2026-04-19T19:51:51.000Z: Otherwise, maybe we drop it at a neighbors\nContext after:\n- Anna Bonewitz @ 2026-04-19T21:35:29.000Z: https://www.fedex.com/en-pt/shipping-tools/online-shipping.html\n- Anna Bonewitz @ 2026-04-19T21:35:46.000Z: The internet here is very, very bad\n- Anna Bonewitz @ 2026-04-19T21:36:26.000Z: Could you try scheduling here? I can\u2019t get the page to load, but I believe if you create an account you can schedule a pick-up using the codes on the box labels",
+          "message_id": "51096",
+          "score": 101.3,
+          "sender_name": "Adriana",
+          "timestamp": "2026-04-19T20:14:39.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[2]",
+          "excerpt": "Thanks Adriana!!\nContext before:\n- Adriana @ 2026-04-23T19:47:43.000Z: Im sorry but maybe if you could ask a neighbor it would be better because this next weeks will be very full Im afraid I cannot give you a day that I will be home\n- Adriana @ 2026-04-23T20:51:49.000Z: He said he can be there at 9:00\n- Anna Bonewitz @ 2026-04-23T21:02:29.000Z: Great! Our guests said that they will be there to let him in\nContext after:\n- Anna Bonewitz @ 2026-04-23T21:02:39.000Z: No problem at all \ud83d\ude00\n- Thomas Wright @ 2026-04-24T07:45:55.000Z: Good morning Adriana, did Vasill confirm he is coming this morning?\n- Adriana @ 2026-04-24T07:47:04.000Z: Yes he said ok",
+          "message_id": "54078",
+          "score": 93.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-04-23T21:02:32.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[3]",
+          "excerpt": "That will be fine with us thanks Adriana!\nContext before:\n- Adriana @ 2026-06-02T08:05:21.000Z: And I made 8h10 yesterday\n- Adriana @ 2026-06-03T20:07:19.000Z: Hi! Please don\u2019t forget the prescription\n- Adriana @ 2026-06-09T14:56:16.000Z: Hello! Yesterday I made 7h30 and the buns were 4,5\u20ac <br>Also I wanted to ask if next week I could go on Tuesday instead of Monday\nContext after:\n- Adriana @ 2026-06-09T15:09:58.000Z: Thank you so much!",
+          "message_id": "72344",
+          "score": 91.3,
+          "sender_name": "Thomas Wright",
+          "timestamp": "2026-06-09T15:09:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[4]",
+          "excerpt": "Hi Adriana! How are you doing?\nContext before:\n- Thomas Wright @ 2026-05-25T10:48:22.000Z: Sorry Adriana I missed your message, do you have availability another day this week?\n- Adriana @ 2026-05-26T18:09:43.000Z: I\u2019m so sorry only on Monday :/\n- Anna Bonewitz @ 2026-05-26T18:26:36.000Z: No problem! Going forwards, unless another day works better for you, you can come on Monday mornings. No need to ask. \ud83e\udd17 have a great week!\nContext after:\n- Anna Bonewitz @ 2026-05-31T18:43:50.000Z: For tomorrow morning, would it be possible to pick up Frank\u2019s prescriptions? He is running low on most of them now, so it would be great to have them all.\n- Adriana @ 2026-05-31T19:17:33.000Z: Hi! Yes of course! Just send me the names\n- Adriana @ 2026-05-31T19:17:48.000Z: Im good thanks how about you?",
+          "message_id": "66856",
+          "score": 91.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-31T18:42:33.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[5]",
+          "excerpt": "Sorry Adriana I missed your message, do you have availability another day this week?\nContext before:\n- Adriana @ 2026-05-19T18:05:17.000Z: Hi! How are you? Just wanted to let you know I made 7h10 yesterday\n- Thomas Wright @ 2026-05-19T18:21:27.000Z: We're well thank you Adriana! Thanks for letting us know\n- Adriana @ 2026-05-25T07:40:29.000Z: Good morning! Should I go today?\nContext after:\n- Adriana @ 2026-05-26T18:09:43.000Z: I\u2019m so sorry only on Monday :/\n- Anna Bonewitz @ 2026-05-26T18:26:36.000Z: No problem! Going forwards, unless another day works better for you, you can come on Monday mornings. No need to ask. \ud83e\udd17 have a great week!\n- Anna Bonewitz @ 2026-05-31T18:42:33.000Z: Hi Adriana! How are you doing?",
+          "message_id": "65615",
+          "score": 91.3,
+          "sender_name": "Thomas Wright",
+          "timestamp": "2026-05-25T10:48:22.000Z"
+        }
+      ],
+      "evidence_count": 5,
+      "expected_actions": [],
+      "expected_path": "model",
+      "expected_sources": [
+        "archive",
+        "control-turns"
+      ],
+      "failures": [],
+      "inferred_actions": [],
+      "inferred_sources": [
+        "archive",
+        "control-turns"
+      ],
+      "memory_state": {},
+      "metrics_only": false,
+      "notes": "Follow-up must resolve 'she' from the retained control-chat window via the planner, not from question-literal heuristics.",
+      "passed": true,
+      "plan": {
+        "answer_kind": "fact",
+        "chat_hints": [
+          "Adriana"
+        ],
+        "normalized_question": "What address did Adriana send?",
+        "people": [
+          "Adriana"
+        ],
+        "preferred_chats": [
+          "Adriana"
+        ],
+        "preferred_senders": [
+          "Adriana"
+        ],
+        "search_queries": [
+          "Adriana address",
+          "Adriana Rua",
+          "Adriana sent",
+          "Adriana location"
+        ],
+        "time_hint": "any"
+      },
+      "question": "What address did she send?",
+      "retrieval": [
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "exact-substring",
+            "fts",
+            "preferred-sender",
+            "token-overlap"
+          ],
+          "message_id": "51096",
+          "score": 101.3,
+          "sender_name": "Adriana",
+          "text": "Rua Afonso enes n\u00b017 R/c",
+          "timestamp": "2026-04-19T20:14:39.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "multi-query",
+            "token-overlap"
+          ],
+          "message_id": "54078",
+          "score": 93.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Thanks Adriana!!",
+          "timestamp": "2026-04-23T21:02:32.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "token-overlap"
+          ],
+          "message_id": "72344",
+          "score": 91.3,
+          "sender_name": "Thomas Wright",
+          "text": "That will be fine with us thanks Adriana!",
+          "timestamp": "2026-06-09T15:09:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "token-overlap"
+          ],
+          "message_id": "66856",
+          "score": 91.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! How are you doing?",
+          "timestamp": "2026-05-31T18:42:33.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "token-overlap"
+          ],
+          "message_id": "65615",
+          "score": 91.3,
+          "sender_name": "Thomas Wright",
+          "text": "Sorry Adriana I missed your message, do you have availability another day this week?",
+          "timestamp": "2026-05-25T10:48:22.000Z"
+        }
+      ],
+      "score_case": true,
+      "tags": [
+        "control-memory",
+        "continuity"
+      ]
+    },
+    {
+      "answer": "Adriana sent the address: Rua Afonso enes n\u00b017 R/c [1].",
+      "answer_path": "model",
+      "case_id": "followup_pronoun_address_paraphrase",
+      "checks": {
+        "answer_contains_all": true,
+        "answer_contains_any": true,
+        "answer_contains_pool": true,
+        "answer_not_contains": true,
+        "answer_path": true,
+        "citation_required": true,
+        "evidence_chat_any": true,
+        "evidence_sender_any": true,
+        "expected_actions": true,
+        "min_evidence": true,
+        "plan_answer_kind_any": true,
+        "plan_people_all": true,
+        "plan_people_any": true,
+        "plan_preferred_chat_any": true,
+        "plan_preferred_sender_any": true,
+        "plan_time_hint_any": true,
+        "source_classes_expected": true,
+        "source_classes_no_fake_archive": true,
+        "top_evidence_chat_any": true,
+        "top_evidence_sender_any": true
+      },
+      "context_budget_class": "short",
+      "control_turns": [
+        {
+          "content": "What address did Adriana send?",
+          "role": "user"
+        },
+        {
+          "content": "Adriana sent Rua Afonso enes n\u00b017 R/c [1].",
+          "role": "assistant"
+        }
+      ],
+      "elapsed_ms": 1913,
+      "enabled": true,
+      "evidence": [
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[1]",
+          "excerpt": "Rua Afonso enes n\u00b017 R/c\nContext before:\n- Anna Bonewitz @ 2026-04-19T19:51:30.000Z: Oh, ok!\n- Anna Bonewitz @ 2026-04-19T19:51:43.000Z: What is your address? It might be too late of notice, but I can try!\n- Anna Bonewitz @ 2026-04-19T19:51:51.000Z: Otherwise, maybe we drop it at a neighbors\nContext after:\n- Anna Bonewitz @ 2026-04-19T21:35:29.000Z: https://www.fedex.com/en-pt/shipping-tools/online-shipping.html\n- Anna Bonewitz @ 2026-04-19T21:35:46.000Z: The internet here is very, very bad\n- Anna Bonewitz @ 2026-04-19T21:36:26.000Z: Could you try scheduling here? I can\u2019t get the page to load, but I believe if you create an account you can schedule a pick-up using the codes on the box labels",
+          "message_id": "51096",
+          "score": 111.3,
+          "sender_name": "Adriana",
+          "timestamp": "2026-04-19T20:14:39.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[2]",
+          "excerpt": "That will be fine with us thanks Adriana!\nContext before:\n- Adriana @ 2026-06-02T08:05:21.000Z: And I made 8h10 yesterday\n- Adriana @ 2026-06-03T20:07:19.000Z: Hi! Please don\u2019t forget the prescription\n- Adriana @ 2026-06-09T14:56:16.000Z: Hello! Yesterday I made 7h30 and the buns were 4,5\u20ac <br>Also I wanted to ask if next week I could go on Tuesday instead of Monday\nContext after:\n- Adriana @ 2026-06-09T15:09:58.000Z: Thank you so much!",
+          "message_id": "72344",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "timestamp": "2026-06-09T15:09:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[3]",
+          "excerpt": "Hi Adriana! How are you doing?\nContext before:\n- Thomas Wright @ 2026-05-25T10:48:22.000Z: Sorry Adriana I missed your message, do you have availability another day this week?\n- Adriana @ 2026-05-26T18:09:43.000Z: I\u2019m so sorry only on Monday :/\n- Anna Bonewitz @ 2026-05-26T18:26:36.000Z: No problem! Going forwards, unless another day works better for you, you can come on Monday mornings. No need to ask. \ud83e\udd17 have a great week!\nContext after:\n- Anna Bonewitz @ 2026-05-31T18:43:50.000Z: For tomorrow morning, would it be possible to pick up Frank\u2019s prescriptions? He is running low on most of them now, so it would be great to have them all.\n- Adriana @ 2026-05-31T19:17:33.000Z: Hi! Yes of course! Just send me the names\n- Adriana @ 2026-05-31T19:17:48.000Z: Im good thanks how about you?",
+          "message_id": "66856",
+          "score": 101.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-31T18:42:33.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[4]",
+          "excerpt": "Sorry Adriana I missed your message, do you have availability another day this week?\nContext before:\n- Adriana @ 2026-05-19T18:05:17.000Z: Hi! How are you? Just wanted to let you know I made 7h10 yesterday\n- Thomas Wright @ 2026-05-19T18:21:27.000Z: We're well thank you Adriana! Thanks for letting us know\n- Adriana @ 2026-05-25T07:40:29.000Z: Good morning! Should I go today?\nContext after:\n- Adriana @ 2026-05-26T18:09:43.000Z: I\u2019m so sorry only on Monday :/\n- Anna Bonewitz @ 2026-05-26T18:26:36.000Z: No problem! Going forwards, unless another day works better for you, you can come on Monday mornings. No need to ask. \ud83e\udd17 have a great week!\n- Anna Bonewitz @ 2026-05-31T18:42:33.000Z: Hi Adriana! How are you doing?",
+          "message_id": "65615",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "timestamp": "2026-05-25T10:48:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[5]",
+          "excerpt": "We're well thank you Adriana! Thanks for letting us know\nContext before:\n- Anna Bonewitz @ 2026-05-18T09:21:08.000Z: Hi Adriana! Good morning. I don\u2019t think so \ud83e\udd17\n- Adriana @ 2026-05-18T09:26:27.000Z: Ok! Se you in a bit\n- Adriana @ 2026-05-19T18:05:17.000Z: Hi! How are you? Just wanted to let you know I made 7h10 yesterday\nContext after:\n- Adriana @ 2026-05-25T07:40:29.000Z: Good morning! Should I go today?\n- Thomas Wright @ 2026-05-25T10:48:22.000Z: Sorry Adriana I missed your message, do you have availability another day this week?\n- Adriana @ 2026-05-26T18:09:43.000Z: I\u2019m so sorry only on Monday :/",
+          "message_id": "62590",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "timestamp": "2026-05-19T18:21:27.000Z"
+        }
+      ],
+      "evidence_count": 5,
+      "expected_actions": [],
+      "expected_path": "model",
+      "expected_sources": [
+        "archive",
+        "control-turns"
+      ],
+      "failures": [],
+      "inferred_actions": [],
+      "inferred_sources": [
+        "archive",
+        "control-turns"
+      ],
+      "memory_state": {},
+      "metrics_only": false,
+      "notes": "Held-out paraphrase of followup_pronoun_address. Same intent, different surface form.",
+      "passed": true,
+      "plan": {
+        "answer_kind": "fact",
+        "chat_hints": [
+          "Adriana"
+        ],
+        "normalized_question": "What was the address Adriana sent?",
+        "people": [
+          "Adriana"
+        ],
+        "preferred_chats": [
+          "Adriana"
+        ],
+        "preferred_senders": [
+          "Adriana"
+        ],
+        "search_queries": [
+          "Adriana address",
+          "Adriana Rua Afonso enes",
+          "Adriana sent address",
+          "Adriana location"
+        ],
+        "time_hint": "recent"
+      },
+      "question": "And what was the address she sent again?",
+      "retrieval": [
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "exact-substring",
+            "fts",
+            "preferred-sender",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "51096",
+          "score": 111.3,
+          "sender_name": "Adriana",
+          "text": "Rua Afonso enes n\u00b017 R/c",
+          "timestamp": "2026-04-19T20:14:39.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "72344",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "text": "That will be fine with us thanks Adriana!",
+          "timestamp": "2026-06-09T15:09:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "66856",
+          "score": 101.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! How are you doing?",
+          "timestamp": "2026-05-31T18:42:33.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "65615",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "text": "Sorry Adriana I missed your message, do you have availability another day this week?",
+          "timestamp": "2026-05-25T10:48:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "62590",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "text": "We're well thank you Adriana! Thanks for letting us know",
+          "timestamp": "2026-05-19T18:21:27.000Z"
+        }
+      ],
+      "score_case": true,
+      "tags": [
+        "control-memory",
+        "continuity",
+        "paraphrase"
+      ]
+    },
+    {
+      "answer": "Rua Afonso enes n\u00b017 R/c [1]",
+      "answer_path": "model",
+      "case_id": "followup_pronoun_address_reminder",
+      "checks": {
+        "answer_contains_all": true,
+        "answer_contains_any": true,
+        "answer_contains_pool": true,
+        "answer_not_contains": true,
+        "answer_path": true,
+        "citation_required": true,
+        "evidence_chat_any": true,
+        "evidence_sender_any": true,
+        "expected_actions": true,
+        "min_evidence": true,
+        "plan_answer_kind_any": true,
+        "plan_people_all": true,
+        "plan_people_any": true,
+        "plan_preferred_chat_any": true,
+        "plan_preferred_sender_any": true,
+        "plan_time_hint_any": true,
+        "source_classes_expected": true,
+        "source_classes_no_fake_archive": true,
+        "top_evidence_chat_any": true,
+        "top_evidence_sender_any": true
+      },
+      "context_budget_class": "short",
+      "control_turns": [
+        {
+          "content": "What address did Adriana send?",
+          "role": "user"
+        },
+        {
+          "content": "Adriana sent Rua Afonso enes n\u00b017 R/c [1].",
+          "role": "assistant"
+        }
+      ],
+      "elapsed_ms": 1913,
+      "enabled": true,
+      "evidence": [
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[1]",
+          "excerpt": "Rua Afonso enes n\u00b017 R/c",
+          "message_id": "51096",
+          "score": 113.3,
+          "sender_name": "Adriana",
+          "timestamp": "2026-04-19T20:14:39.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[2]",
+          "excerpt": "Hello! Yesterday I made 7h30 and the buns were 4,5\u20ac Also I wanted to ask if next week I could go on Tuesday instead of Monday...",
+          "message_id": "72343",
+          "score": 52.154999999999994,
+          "sender_name": "Adriana",
+          "timestamp": "2026-06-09T14:56:16.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[3]",
+          "excerpt": "That will be fine with us thanks Adriana!",
+          "message_id": "72344",
+          "score": 103.3,
+          "sender_name": "Thomas Wright",
+          "timestamp": "2026-06-09T15:09:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[4]",
+          "excerpt": "Thank you so much!...",
+          "message_id": "72345",
+          "score": 52.154999999999994,
+          "sender_name": "Adriana",
+          "timestamp": "2026-06-09T15:09:58.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[5]",
+          "excerpt": "Hi Adriana! How are you doing?",
+          "message_id": "66856",
+          "score": 103.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-31T18:42:33.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "citation_id": "[6]",
+          "excerpt": "For tomorrow morning, would it be possible to pick up Frank\u2019s prescriptions? He is running low on most of them now, so it would be great to have them all....",
+          "message_id": "66861",
+          "score": 52.154999999999994,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-31T18:43:50.000Z"
+        }
+      ],
+      "evidence_count": 6,
+      "expected_actions": [],
+      "expected_path": "model",
+      "expected_sources": [
+        "archive",
+        "control-turns"
+      ],
+      "failures": [],
+      "inferred_actions": [],
+      "inferred_sources": [
+        "archive",
+        "control-turns"
+      ],
+      "memory_state": {},
+      "metrics_only": false,
+      "notes": "Second held-out paraphrase of the pronoun follow-up.",
+      "passed": true,
+      "plan": {
+        "answer_kind": "fact",
+        "chat_hints": [
+          "Adriana"
+        ],
+        "normalized_question": "Can you remind me which address Adriana sent over?",
+        "people": [
+          "Adriana"
+        ],
+        "preferred_chats": [
+          "Adriana"
+        ],
+        "preferred_senders": [
+          "Adriana"
+        ],
+        "search_queries": [
+          "Adriana address",
+          "Adriana Rua Afonso enes",
+          "Adriana sent address"
+        ],
+        "time_hint": "recent"
+      },
+      "question": "Can you remind me which address she sent over?",
+      "retrieval": [
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "address-shape",
+            "exact-substring",
+            "fts",
+            "multi-query",
+            "preferred-sender",
+            "recent-hint",
+            "span-nearby",
+            "token-overlap"
+          ],
+          "message_id": "51096",
+          "score": 113.3,
+          "sender_name": "Adriana",
+          "text": "Rua Afonso enes n\u00b017 R/c",
+          "timestamp": "2026-04-19T20:14:39.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "multi-query",
+            "recent-hint",
+            "span-nearby",
+            "token-overlap"
+          ],
+          "message_id": "72344",
+          "score": 103.3,
+          "sender_name": "Thomas Wright",
+          "text": "That will be fine with us thanks Adriana!",
+          "timestamp": "2026-06-09T15:09:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "multi-query",
+            "recent-hint",
+            "span-nearby",
+            "token-overlap"
+          ],
+          "message_id": "66856",
+          "score": 103.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! How are you doing?",
+          "timestamp": "2026-05-31T18:42:33.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "multi-query",
+            "recent-hint",
+            "span-nearby",
+            "token-overlap"
+          ],
+          "message_id": "54078",
+          "score": 103.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Thanks Adriana!!",
+          "timestamp": "2026-04-23T21:02:32.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "multi-query",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "54015",
+          "score": 103.3,
+          "sender_name": "Thomas Wright",
+          "text": "that's fine Adriana!",
+          "timestamp": "2026-04-23T18:27:01.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "multi-query",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "51732",
+          "score": 103.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Good morning Adriana! Any luck?",
+          "timestamp": "2026-04-20T08:40:16.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "65615",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "text": "Sorry Adriana I missed your message, do you have availability another day this week?",
+          "timestamp": "2026-05-25T10:48:22.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "62590",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "text": "We're well thank you Adriana! Thanks for letting us know",
+          "timestamp": "2026-05-19T18:21:27.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "62547",
+          "score": 101.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! Good morning. I don\u2019t think so \ud83e\udd17",
+          "timestamp": "2026-05-18T09:21:08.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "59040",
+          "score": 101.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! Apologies I am just now seeing this. Are you able to come another day this week?",
+          "timestamp": "2026-05-11T11:34:45.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "57332",
+          "score": 101.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! They anticipate arriving between 4-5:30 \ud83d\ude42",
+          "timestamp": "2026-05-04T08:17:58.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "57322",
+          "score": 101.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! It\u2019s ok, if you could go in the morning? As our guests will arrive in the afternoon on Tuesday",
+          "timestamp": "2026-05-03T20:54:12.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "57313",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "text": "Hi Adriana, could you pick up some cat food from leclerc when you come please? 4 bags should do it. It's the small grain free bags. <br>The cat feeders need a top up",
+          "timestamp": "2026-05-03T20:26:56.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "56153",
+          "score": 101.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! Our guests are leaving on Monday (earlier than expected), so you are welcome to clean on Monday if that works better for you?",
+          "timestamp": "2026-05-01T21:23:25.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "55833",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "text": "Hi Adriana, sorry missed this earlier. No, what happened?",
+          "timestamp": "2026-04-28T19:31:25.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "54181",
+          "score": 101.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hi Adriana! They arrive tomorrow, but not sure what time",
+          "timestamp": "2026-04-27T11:46:04.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "54120",
+          "score": 101.3,
+          "sender_name": "Thomas Wright",
+          "text": "Thanks for letting us know Adriana, thanks good to hear",
+          "timestamp": "2026-04-24T10:21:57.000Z"
+        },
+        {
+          "chat_id": "!E2el8v5ehokes0vsc6J7:beeper.local",
+          "chat_name": "Tejanos (and Tom)",
+          "match_reasons": [
+            "exact-substring",
+            "fts",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "67113",
+          "score": 91.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "but we could not leave as the rental car is blocking the street",
+          "timestamp": "2026-05-30T12:24:56.000Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "fts",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "65822",
+          "score": 91.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "Malmerendas Boutique Lodging\nRua Dr. Alves da Veiga, 186 | 4000-072 \u2013 Porto, Portugal",
+          "timestamp": "2026-05-26T13:12:48.945Z"
+        },
+        {
+          "chat_id": "!E2el8v5ehokes0vsc6J7:beeper.local",
+          "chat_name": "Tejanos (and Tom)",
+          "match_reasons": [
+            "exact-substring",
+            "fts",
+            "recent-hint",
+            "token-overlap"
+          ],
+          "message_id": "63413",
+          "score": 91.3,
+          "sender_name": "JBFLY",
+          "text": "There is some parking on the street",
+          "timestamp": "2026-05-19T15:38:58.222Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "span-nearby"
+          ],
+          "message_id": "72345",
+          "score": 52.154999999999994,
+          "sender_name": "Adriana",
+          "text": "Thank you so much!",
+          "timestamp": "2026-06-09T15:09:58.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "span-nearby"
+          ],
+          "message_id": "72343",
+          "score": 52.154999999999994,
+          "sender_name": "Adriana",
+          "text": "Hello! Yesterday I made 7h30 and the buns were 4,5\u20ac <br>Also I wanted to ask if next week I could go on Tuesday instead of Monday",
+          "timestamp": "2026-06-09T14:56:16.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "span-nearby"
+          ],
+          "message_id": "66861",
+          "score": 52.154999999999994,
+          "sender_name": "Anna Bonewitz",
+          "text": "For tomorrow morning, would it be possible to pick up Frank\u2019s prescriptions? He is running low on most of them now, so it would be great to have them all.",
+          "timestamp": "2026-05-31T18:43:50.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "span-nearby"
+          ],
+          "message_id": "54080",
+          "score": 52.154999999999994,
+          "sender_name": "Anna Bonewitz",
+          "text": "No problem at all \ud83d\ude00",
+          "timestamp": "2026-04-23T21:02:39.000Z"
+        },
+        {
+          "chat_id": "!z3WJEQohCQ2sLdZgMMql:beeper.local",
+          "chat_name": "Adriana, Anna & Tom Housekeeping",
+          "match_reasons": [
+            "span-nearby"
+          ],
+          "message_id": "54077",
+          "score": 52.154999999999994,
+          "sender_name": "Anna Bonewitz",
+          "text": "Great! Our guests said that they will be there to let him in",
+          "timestamp": "2026-04-23T21:02:29.000Z"
+        }
+      ],
+      "score_case": true,
+      "tags": [
+        "control-memory",
+        "continuity",
+        "paraphrase"
+      ]
+    },
+    {
+      "answer": "Anna Bonewitz is your sister.",
+      "answer_path": "model",
+      "case_id": "relationship_fact_paraphrase",
+      "checks": {
+        "answer_contains_all": true,
+        "answer_contains_any": true,
+        "answer_contains_pool": true,
+        "answer_not_contains": true,
+        "answer_path": true,
+        "citation_required": true,
+        "evidence_chat_any": true,
+        "evidence_sender_any": true,
+        "expected_actions": true,
+        "min_evidence": true,
+        "plan_answer_kind_any": true,
+        "plan_people_all": true,
+        "plan_people_any": true,
+        "plan_preferred_chat_any": true,
+        "plan_preferred_sender_any": true,
+        "plan_time_hint_any": true,
+        "source_classes_expected": true,
+        "source_classes_no_fake_archive": true,
+        "top_evidence_chat_any": true,
+        "top_evidence_sender_any": true
+      },
+      "context_budget_class": "short",
+      "control_turns": [],
+      "elapsed_ms": 1485,
+      "enabled": true,
+      "evidence": [
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[1]",
+          "excerpt": "Hey John!...\nContext before:\n- Anna Bonewitz @ 2026-06-01T20:49:42.000Z: had to order 9didante and need to re-order Fusetti\n- Anna Bonewitz @ 2026-06-01T20:50:03.000Z: We could go to \u00d3bidos, too, before we head that way\n- JBFLY @ 2026-06-02T08:07:05.801Z: Okay, just let me know when you are ready\nContext after:\n- Anna Bonewitz @ 2026-06-02T15:04:30.000Z: Incoming call. Use the WhatsApp app to answer.\n- Anna Bonewitz @ 2026-06-08T13:18:18.000Z: https://www.amazon.es/-/en/LAVIEVERT-Tilting-Colored-Drawers-Adjustable/dp/B0FMXVPF8H/ref=sr_1_24?dib=eyJ2IjoiMSJ9.YU8qQaKCz5ncW4nU5TAFWJAvanIN7zmPpZ7ZSuFZoPqMHwISkdvS12_Jnhq2FrknUXO3GsOipyQydvWocxCpcYS4UEx8gx6ypiNU4pvjmN-LMFSbF1165ZSLmOSBGbGoA0PLWqx4Ks53NR-bP7ArBR-1wPY1kCRnWYA1v-NqK6E1COkcs0jF1fWSzZ3gOt2w9NzuQt_h7nOKmlqjqe-j7cO8KDfIao8a0ET_N-bz7nBvu_4T6ItK0UYNWLR5-IXWfTCp3p6emRnT6_JISX8WEWeH8PunN_HcOne7kSdLrd0.5F_veDCSCoXkusx88_djOVU9Fm86bQuinlkw_GdXNcw&amp;dib_tag=se&amp;qid=1780864317&amp;refinements=p_89%3ALAVIEVERT&amp;sr=8-24&amp;srs=52300106031\n- Anna Bonewitz @ 2026-06-08T13:27:39.000Z: ROPODA Mesa Puzzle de 1500 Piezas, Tablero de Rompecabezas con Ajuste de \u00c1ngulo y Altura, Mesa de Rompecabezas con Seis Cajones, Tapa y Cuatro Ruedas, Puzzle Table con Pedestal \u00danico , 89 x 68 cm <br> <a href=\"https://amzn.eu/d/08zYGy2P\">https://amzn.eu/d/08zYGy2P</a>",
+          "message_id": "67650",
+          "score": 60.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-06-02T08:56:46.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[2]",
+          "excerpt": "Awesome!...\nContext before:\n- JBFLY @ 2026-05-29T09:20:00.958Z: Oh god haha\n- JBFLY @ 2026-05-29T09:20:12.644Z: Yeah she's not very skilled in the litter arts\n- JBFLY @ 2026-05-29T09:33:12.654Z: We're headed back today!\nContext after:\n- Anna Bonewitz @ 2026-06-01T12:28:00.000Z: Incoming call. Use the WhatsApp app to answer.\n- Anna Bonewitz @ 2026-06-01T20:47:53.000Z: Hey John, are you going to come back and watch the show? No worries if you don\u2019t feel like it\n- JBFLY @ 2026-06-01T20:48:33.380Z: I think I'm going to sleep... Super tired",
+          "message_id": "66853",
+          "score": 60.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-29T14:26:54.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[3]",
+          "excerpt": "\ud83d\ude2c...\nContext before:\n- Anna Bonewitz @ 2026-05-28T22:31:01.000Z: I\u2019m not sure Chewy using the litter robot was a good idea \ud83e\udd22\n- Anna Bonewitz @ 2026-05-28T22:31:18.000Z: She pooped all over the edge and on the floor\n- Anna Bonewitz @ 2026-05-28T22:31:31.000Z: Wet, smelly poop that I could smell all the way from the kitchen!\nContext after:\n- JBFLY @ 2026-05-29T09:20:00.958Z: Oh god haha\n- JBFLY @ 2026-05-29T09:20:12.644Z: Yeah she's not very skilled in the litter arts\n- JBFLY @ 2026-05-29T09:33:12.654Z: We're headed back today!",
+          "message_id": "66801",
+          "score": 60.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-28T22:31:44.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[4]",
+          "excerpt": "Cool!...\nContext before:\n- JBFLY @ 2026-05-23T12:33:20.676Z: This one is really good!\n- JBFLY @ 2026-05-23T12:33:23.471Z: Had to get some Italian wine\nContext after:\n- JBFLY @ 2026-05-23T12:33:56.933Z: I think I wore Addy out yesterday... She's excited to just have a chill fun day if cooking with y'all!\n- Anna Bonewitz @ 2026-05-28T13:49:53.000Z: https://www.linkedin.com/jobs/view/4395728238/",
+          "message_id": "65088",
+          "score": 60.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-23T12:33:54.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[5]",
+          "excerpt": "No worries...\nContext before:\n- JBFLY @ 2026-05-19T14:50:50.473Z: She's not feeling great... Jet lag hits pretty hard around this hour\n- Anna Bonewitz @ 2026-05-19T14:51:02.000Z: Ok\nContext after:\n- Anna Bonewitz @ 2026-05-19T14:51:18.000Z: We have had a pretty bad day\n- Anna Bonewitz @ 2026-05-19T14:51:22.000Z: With Mom and Dad\n- Anna Bonewitz @ 2026-05-19T14:51:34.000Z: But the mood improved a bit",
+          "message_id": "63185",
+          "score": 58.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-19T14:51:08.000Z"
+        }
+      ],
+      "evidence_count": 5,
+      "expected_actions": [],
+      "expected_path": "model",
+      "expected_sources": [
+        "memory"
+      ],
+      "failures": [],
+      "inferred_actions": [],
+      "inferred_sources": [
+        "memory"
+      ],
+      "memory_state": {
+        "facts": [
+          {
+            "object": "sister",
+            "predicate": "relationship_to_user",
+            "source": "user-approved fact",
+            "subject": "Anna Bonewitz"
+          }
+        ]
+      },
+      "metrics_only": false,
+      "notes": "Relationship fact must come from stored memory through the model path; phrased to avoid the canonical 'who is X' routing shape.",
+      "passed": true,
+      "plan": {
+        "answer_kind": "fact",
+        "chat_hints": [],
+        "normalized_question": "How is Anna related to me?",
+        "people": [
+          "Anna Bonewitz"
+        ],
+        "preferred_chats": [
+          "!2NZhZiC7OUiAYofoeQV8:beeper.local",
+          "!AhfaBmJnfvRYFhre6TIS:beeper.local",
+          "!E2el8v5ehokes0vsc6J7:beeper.local",
+          "!IrXTPYt8T8Qr7MLOcRsF:beeper.local",
+          "!MOr33QdF04aLE9Ygnhus:beeper.local",
+          "!N0vy9ZrouaODhdVWzwTC:beeper.local",
+          "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "!SqLCU9oCJn24DsHlCxfF:beeper.local",
+          "!XgywX7WwI9dvsWaOYS56:beeper.local",
+          "!YGAFJY7Qdw1IKZstQKmS:beeper.local",
+          "!vt75QFTpXJzP9Au2qN3u:beeper.local",
+          "!z3WJEQohCQ2sLdZgMMql:beeper.local"
+        ],
+        "preferred_senders": [
+          "Anna Bonewitz"
+        ],
+        "search_queries": [
+          "Anna Bonewitz relationship",
+          "Anna Merrick Wright relationship",
+          "Anna Merrick Bonewitz relationship"
+        ],
+        "time_hint": "any"
+      },
+      "question": "How is Anna related to me?",
+      "retrieval": [
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "67650",
+          "score": 60.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hey John!",
+          "timestamp": "2026-06-02T08:56:46.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "66853",
+          "score": 60.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Awesome!",
+          "timestamp": "2026-05-29T14:26:54.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "66801",
+          "score": 60.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "\ud83d\ude2c",
+          "timestamp": "2026-05-28T22:31:44.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "65088",
+          "score": 60.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Cool!",
+          "timestamp": "2026-05-23T12:33:54.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "63185",
+          "score": 58.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "No worries",
+          "timestamp": "2026-05-19T14:51:08.000Z"
+        }
+      ],
+      "score_case": true,
+      "tags": [
+        "control-memory",
+        "structured-memory",
+        "paraphrase"
+      ]
+    },
+    {
+      "answer": "Anna Bonewitz is your sister.",
+      "answer_path": "model",
+      "case_id": "relationship_fact_verification",
+      "checks": {
+        "answer_contains_all": true,
+        "answer_contains_any": true,
+        "answer_contains_pool": true,
+        "answer_not_contains": true,
+        "answer_path": true,
+        "citation_required": true,
+        "evidence_chat_any": true,
+        "evidence_sender_any": true,
+        "expected_actions": true,
+        "min_evidence": true,
+        "plan_answer_kind_any": true,
+        "plan_people_all": true,
+        "plan_people_any": true,
+        "plan_preferred_chat_any": true,
+        "plan_preferred_sender_any": true,
+        "plan_time_hint_any": true,
+        "source_classes_expected": true,
+        "source_classes_no_fake_archive": true,
+        "top_evidence_chat_any": true,
+        "top_evidence_sender_any": true
+      },
+      "context_budget_class": "short",
+      "control_turns": [],
+      "elapsed_ms": 1637,
+      "enabled": true,
+      "evidence": [
+        {
+          "chat_id": "!XgywX7WwI9dvsWaOYS56:beeper.local",
+          "chat_name": "Laurence & Family\u2019s Visit",
+          "citation_id": "[1]",
+          "excerpt": "Sounds great! Where in Belgium will you be going? Tom\u2019s sister recently moved to Brussels from Antwerp. We were there at Christmas time \ud83d\ude42\nContext before:\n- Anna Bonewitz @ 2026-05-06T10:04:49.000Z: Dear Laurence and Emilien, thank you for your kind words, and for everything you did to help with our kitties and the boiler issue. We are so pleased that you enjoyed your stay, and hope that you will continue to enjoy Portugal! When do you return to Canada? \ud83d\ude42\n- Emilien Galand @ 2026-05-06T13:41:29.000Z: We are flying to Belgium tomorrow and then Canada at the end of May :)",
+          "message_id": "57181",
+          "score": 70.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-06T13:58:34.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[2]",
+          "excerpt": "I am honestly thinking we need to have a private family discussion before they leave...\nContext before:\n- Anna Bonewitz @ 2026-05-19T11:28:37.000Z: but I think his mood will improve\n- Anna Bonewitz @ 2026-05-19T11:28:49.000Z: it\u2019s the oppressive vibe of Mom and Dad not talking to each other\n- Anna Bonewitz @ 2026-05-19T11:29:03.000Z: they are pretty much avoiding each other\nContext after:\n- Anna Bonewitz @ 2026-05-19T11:29:43.000Z: Or maybe I will try to do that over lunch\n- JBFLY @ 2026-05-19T11:31:26.446Z: Dang, I'm sorry\n- JBFLY @ 2026-05-19T11:34:55.093Z: Addy wanted to go to jncquoiasia...",
+          "message_id": "63009",
+          "score": 66.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-19T11:29:22.000Z"
+        },
+        {
+          "chat_id": "!XgywX7WwI9dvsWaOYS56:beeper.local",
+          "chat_name": "Laurence & Family\u2019s Visit",
+          "citation_id": "[3]",
+          "excerpt": "Meanwhile, we only just realized another cat that did not belong to the family of where we have been staying has been sleeping with us \ud83d\ude02\ud83d\ude02\ud83d\ude02...\nContext before:\n- Emilien Galand @ 2026-05-02T09:47:02.000Z: Few days ago I saw a smaller one during the night but I don\u2019t have any picture\n- Anna Bonewitz @ 2026-05-02T10:17:45.000Z: Thank you so much!! \ud83e\udd17\n- Anna Bonewitz @ 2026-05-02T10:17:46.000Z: That\u2019s Chewy on the left and Livvy on the right\nContext after:\n- Laurence St-Aubin @ 2026-05-02T10:40:35.000Z: \ud83d\ude02\n- Emilien Galand @ 2026-05-02T16:38:26.000Z: Look who\u2019s back!\n- Anna Bonewitz @ 2026-05-02T16:38:42.000Z: Yayyyy",
+          "message_id": "56324",
+          "score": 66.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-02T10:17:46.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[4]",
+          "excerpt": "Hey John!...\nContext before:\n- Anna Bonewitz @ 2026-06-01T20:49:42.000Z: had to order 9didante and need to re-order Fusetti\n- Anna Bonewitz @ 2026-06-01T20:50:03.000Z: We could go to \u00d3bidos, too, before we head that way\n- JBFLY @ 2026-06-02T08:07:05.801Z: Okay, just let me know when you are ready\nContext after:\n- Anna Bonewitz @ 2026-06-02T15:04:30.000Z: Incoming call. Use the WhatsApp app to answer.\n- Anna Bonewitz @ 2026-06-08T13:18:18.000Z: https://www.amazon.es/-/en/LAVIEVERT-Tilting-Colored-Drawers-Adjustable/dp/B0FMXVPF8H/ref=sr_1_24?dib=eyJ2IjoiMSJ9.YU8qQaKCz5ncW4nU5TAFWJAvanIN7zmPpZ7ZSuFZoPqMHwISkdvS12_Jnhq2FrknUXO3GsOipyQydvWocxCpcYS4UEx8gx6ypiNU4pvjmN-LMFSbF1165ZSLmOSBGbGoA0PLWqx4Ks53NR-bP7ArBR-1wPY1kCRnWYA1v-NqK6E1COkcs0jF1fWSzZ3gOt2w9NzuQt_h7nOKmlqjqe-j7cO8KDfIao8a0ET_N-bz7nBvu_4T6ItK0UYNWLR5-IXWfTCp3p6emRnT6_JISX8WEWeH8PunN_HcOne7kSdLrd0.5F_veDCSCoXkusx88_djOVU9Fm86bQuinlkw_GdXNcw&amp;dib_tag=se&amp;qid=1780864317&amp;refinements=p_89%3ALAVIEVERT&amp;sr=8-24&amp;srs=52300106031\n- Anna Bonewitz @ 2026-06-08T13:27:39.000Z: ROPODA Mesa Puzzle de 1500 Piezas, Tablero de Rompecabezas con Ajuste de \u00c1ngulo y Altura, Mesa de Rompecabezas con Seis Cajones, Tapa y Cuatro Ruedas, Puzzle Table con Pedestal \u00danico , 89 x 68 cm <br> <a href=\"https://amzn.eu/d/08zYGy2P\">https://amzn.eu/d/08zYGy2P</a>",
+          "message_id": "67650",
+          "score": 58.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-06-02T08:56:46.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[5]",
+          "excerpt": "Awesome!...\nContext before:\n- JBFLY @ 2026-05-29T09:20:00.958Z: Oh god haha\n- JBFLY @ 2026-05-29T09:20:12.644Z: Yeah she's not very skilled in the litter arts\n- JBFLY @ 2026-05-29T09:33:12.654Z: We're headed back today!\nContext after:\n- Anna Bonewitz @ 2026-06-01T12:28:00.000Z: Incoming call. Use the WhatsApp app to answer.\n- Anna Bonewitz @ 2026-06-01T20:47:53.000Z: Hey John, are you going to come back and watch the show? No worries if you don\u2019t feel like it\n- JBFLY @ 2026-06-01T20:48:33.380Z: I think I'm going to sleep... Super tired",
+          "message_id": "66853",
+          "score": 58.3,
+          "sender_name": "Anna Bonewitz",
+          "timestamp": "2026-05-29T14:26:54.000Z"
+        }
+      ],
+      "evidence_count": 5,
+      "expected_actions": [],
+      "expected_path": "model",
+      "expected_sources": [
+        "memory"
+      ],
+      "failures": [],
+      "inferred_actions": [],
+      "inferred_sources": [
+        "memory"
+      ],
+      "memory_state": {
+        "facts": [
+          {
+            "object": "sister",
+            "predicate": "relationship_to_user",
+            "source": "user-approved fact",
+            "subject": "Anna Bonewitz"
+          }
+        ]
+      },
+      "metrics_only": false,
+      "notes": "Model must pick the stored relationship over the wrong alternative offered in the question.",
+      "passed": true,
+      "plan": {
+        "answer_kind": "fact",
+        "chat_hints": [],
+        "normalized_question": "Is Anna my cousin or my sister?",
+        "people": [
+          "Anna Bonewitz"
+        ],
+        "preferred_chats": [
+          "!2NZhZiC7OUiAYofoeQV8:beeper.local",
+          "!AhfaBmJnfvRYFhre6TIS:beeper.local",
+          "!E2el8v5ehokes0vsc6J7:beeper.local",
+          "!IrXTPYt8T8Qr7MLOcRsF:beeper.local",
+          "!MOr33QdF04aLE9Ygnhus:beeper.local",
+          "!N0vy9ZrouaODhdVWzwTC:beeper.local",
+          "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "!SqLCU9oCJn24DsHlCxfF:beeper.local",
+          "!XgywX7WwI9dvsWaOYS56:beeper.local",
+          "!YGAFJY7Qdw1IKZstQKmS:beeper.local",
+          "!vt75QFTpXJzP9Au2qN3u:beeper.local",
+          "!z3WJEQohCQ2sLdZgMMql:beeper.local"
+        ],
+        "preferred_senders": [
+          "Anna Bonewitz"
+        ],
+        "search_queries": [
+          "Anna Bonewitz sister",
+          "Anna Bonewitz cousin",
+          "Anna Bonewitz relationship",
+          "Anna Bonewitz family"
+        ],
+        "time_hint": "any"
+      },
+      "question": "Is Anna my cousin or my sister?",
+      "retrieval": [
+        {
+          "chat_id": "!XgywX7WwI9dvsWaOYS56:beeper.local",
+          "chat_name": "Laurence & Family\u2019s Visit",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "preferred-sender",
+            "token-overlap"
+          ],
+          "message_id": "57181",
+          "score": 70.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Sounds great! Where in Belgium will you be going? Tom\u2019s sister recently moved to Brussels from Antwerp. We were there at Christmas time \ud83d\ude42",
+          "timestamp": "2026-05-06T13:58:34.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "preferred-chat",
+            "preferred-sender",
+            "token-overlap"
+          ],
+          "message_id": "63009",
+          "score": 66.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "I am honestly thinking we need to have a private family discussion before they leave",
+          "timestamp": "2026-05-19T11:29:22.000Z"
+        },
+        {
+          "chat_id": "!XgywX7WwI9dvsWaOYS56:beeper.local",
+          "chat_name": "Laurence & Family\u2019s Visit",
+          "match_reasons": [
+            "fts",
+            "preferred-chat",
+            "preferred-sender",
+            "token-overlap"
+          ],
+          "message_id": "56324",
+          "score": 66.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Meanwhile, we only just realized another cat that did not belong to the family of where we have been staying has been sleeping with us \ud83d\ude02\ud83d\ude02\ud83d\ude02",
+          "timestamp": "2026-05-02T10:17:46.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "67650",
+          "score": 58.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Hey John!",
+          "timestamp": "2026-06-02T08:56:46.000Z"
+        },
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "66853",
+          "score": 58.3,
+          "sender_name": "Anna Bonewitz",
+          "text": "Awesome!",
+          "timestamp": "2026-05-29T14:26:54.000Z"
+        }
+      ],
+      "score_case": true,
+      "tags": [
+        "control-memory",
+        "structured-memory",
+        "paraphrase"
+      ]
+    },
+    {
+      "answer": "I do not have that information stored.",
+      "answer_path": "model",
+      "case_id": "unstored_relationship_refusal",
+      "checks": {
+        "answer_contains_all": true,
+        "answer_contains_any": true,
+        "answer_contains_pool": true,
+        "answer_not_contains": true,
+        "answer_path": true,
+        "citation_required": true,
+        "evidence_chat_any": true,
+        "evidence_sender_any": true,
+        "expected_actions": true,
+        "min_evidence": true,
+        "plan_answer_kind_any": true,
+        "plan_people_all": true,
+        "plan_people_any": true,
+        "plan_preferred_chat_any": true,
+        "plan_preferred_sender_any": true,
+        "plan_time_hint_any": true,
+        "source_classes_expected": true,
+        "source_classes_no_fake_archive": true,
+        "top_evidence_chat_any": true,
+        "top_evidence_sender_any": true
+      },
+      "context_budget_class": "short",
+      "control_turns": [],
+      "elapsed_ms": 1404,
+      "enabled": true,
+      "evidence": [
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "citation_id": "[1]",
+          "excerpt": "NISS application pages gov.pt pages related to NISS URLs containing: niss\nContext before:\n- Anna Bonewitz @ 2026-06-08T13:27:39.000Z: ROPODA Mesa Puzzle de 1500 Piezas, Tablero de Rompecabezas con Ajuste de \u00c1ngulo y Altura, Mesa de Rompecabezas con Seis Cajones, Tapa y Cuatro Ruedas, Puzzle Table con Pedestal \u00danico , 89 x 68 cm <br> <a href=\"https://amzn.eu/d/08zYGy2P\">https://amzn.eu/d/08zYGy2P</a>\n- JBFLY @ 2026-06-08T15:20:19.965Z: [image: PXL_20260602_190454478.MP.jpg]\n- JBFLY @ 2026-06-08T15:21:34.306Z: 651002\nContext after:\n- JBFLY @ 2026-06-08T16:50:23.000Z: [image: image.jpg]",
+          "message_id": "71944",
+          "score": 33.3,
+          "sender_name": "JBFLY",
+          "timestamp": "2026-06-08T16:26:25.651Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[2]",
+          "excerpt": "Andy family...\nContext before:\n- Adrienne Pe\u00f1a @ 2026-06-11T02:24:35.667Z: Not be pressured and like do it now\n- Adrienne Pe\u00f1a @ 2026-06-11T02:24:41.655Z: It hurts\n- Adrienne Pe\u00f1a @ 2026-06-11T02:24:44.166Z: And I'm scared\nContext after:\n- Adrienne Pe\u00f1a @ 2026-06-11T02:24:52.756Z: They all don't want me to go\n- Adrienne Pe\u00f1a @ 2026-06-11T02:24:58.662Z: Bc of the reasons I gave u\n- Adrienne Pe\u00f1a @ 2026-06-11T02:25:05.288Z: They think we should do it together",
+          "message_id": "72709",
+          "score": 31.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "timestamp": "2026-06-11T02:24:47.701Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[3]",
+          "excerpt": "Well. I'm tired of this. I think I am done for now. At least until you will respect this relationship and treat me with enough dignity to talk to me. I'm done just talking into the void. You have done this over and over. It's just too painful....\nContext before:\n- JBFLY @ 2026-06-09T18:32:27.125Z: And I think you would rather it just be cold and through a text message so you can tell everyone what a horrible person I am. If course you have already said it multiple times. I guess maybe I just need to listen. You already told me goodbye\n- JBFLY @ 2026-06-09T18:32:36.737Z: And that u are done\n- JBFLY @ 2026-06-09T18:33:00.651Z: Should I just believe you? Do you want me to leave you alone?\nContext after:\n- JBFLY @ 2026-06-09T18:38:57.121Z: Just let me know when you are ready to have a conversation. I'll leave you alone until then. Ball Is in your court Addy. If you care about me at all you will find some time to call me. (Hopefully not at 4am my time)\n- JBFLY @ 2026-06-09T18:41:15.395Z: I love you too much to fuck everything up in anger over fucking text messages. I hope you can do the same for me.\n- Adrienne Pe\u00f1a @ 2026-06-09T18:49:07.371Z: You are dismissing the fact that how you speak to me. . You have no right to demean my life. My jo me or anything",
+          "message_id": "72372",
+          "score": 31.3,
+          "sender_name": "JBFLY",
+          "timestamp": "2026-06-09T18:35:54.942Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[4]",
+          "excerpt": "I want you to explain to me what you want from me and what you want from this relationship we have right now. So we are on the same page. Are you considering coming back to be with me? We go from there or are you dead set on staying and building a life in Portugal? Straight up tell me...\nContext before:\n- Adrienne Pe\u00f1a @ 2026-06-07T15:45:17.825Z: This isn't a relationship\n- Adrienne Pe\u00f1a @ 2026-06-07T15:45:33.911Z: Its so disrespectful to me\n- Adrienne Pe\u00f1a @ 2026-06-07T15:46:12.794Z: So maybe we should have a serious conversation tomorrow\nContext after:\n- Adrienne Pe\u00f1a @ 2026-06-07T15:51:36.956Z: Bc I don't see myself moving there\n- JBFLY @ 2026-06-07T17:28:35.119Z: I'm home! I took a nap there, then left early this morning... Went and did the grocery store, then came home and fell back asleep. Just waking up now\n- JBFLY @ 2026-06-07T17:29:00.283Z: Sorry I didnt text... I thought u were asleep.",
+          "message_id": "71214",
+          "score": 31.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "timestamp": "2026-06-07T15:51:24.554Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[5]",
+          "excerpt": "This isn't a relationship...\nContext before:\n- Adrienne Pe\u00f1a @ 2026-06-07T15:44:51.173Z: You are at a girl's house. You are fucked up. Even after the road block and us googling what happens if you get caught driving fucked up. Years in prison in a foreign country\n- Adrienne Pe\u00f1a @ 2026-06-07T15:45:07.862Z: You don't even call me to tell me you left or made it home safe\n- Adrienne Pe\u00f1a @ 2026-06-07T15:45:09.419Z: Nothing\nContext after:\n- Adrienne Pe\u00f1a @ 2026-06-07T15:45:33.911Z: Its so disrespectful to me\n- Adrienne Pe\u00f1a @ 2026-06-07T15:46:12.794Z: So maybe we should have a serious conversation tomorrow\n- Adrienne Pe\u00f1a @ 2026-06-07T15:51:24.554Z: I want you to explain to me what you want from me and what you want from this relationship we have right now. So we are on the same page. Are you considering coming back to be with me? We go from there or are you dead set on staying and building a life in Portugal? Straight up tell me",
+          "message_id": "71208",
+          "score": 31.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "timestamp": "2026-06-07T15:45:17.825Z"
+        }
+      ],
+      "evidence_count": 5,
+      "expected_actions": [],
+      "expected_path": "model",
+      "expected_sources": [],
+      "failures": [],
+      "inferred_actions": [],
+      "inferred_sources": [],
+      "memory_state": {
+        "facts": [
+          {
+            "object": "sister",
+            "predicate": "relationship_to_user",
+            "source": "user-approved fact",
+            "subject": "Anna Bonewitz"
+          }
+        ]
+      },
+      "metrics_only": false,
+      "notes": "No stored fact about Marcus exists. The model must say it does not have that information rather than inventing a relationship.",
+      "passed": true,
+      "plan": {
+        "answer_kind": "fact",
+        "chat_hints": [],
+        "normalized_question": "How is Marcus related to me?",
+        "people": [],
+        "preferred_chats": [],
+        "preferred_senders": [],
+        "search_queries": [
+          "Marcus",
+          "Marcus relationship",
+          "Marcus family",
+          "Marcus connection"
+        ],
+        "time_hint": "any"
+      },
+      "question": "How is Marcus related to me?",
+      "retrieval": [
+        {
+          "chat_id": "!PZnV8F0W3sXFZgXkrmJ2:beeper.local",
+          "chat_name": "Anna Bonewitz",
+          "match_reasons": [
+            "fts",
+            "multi-query",
+            "token-overlap"
+          ],
+          "message_id": "71944",
+          "score": 33.3,
+          "sender_name": "JBFLY",
+          "text": "<p>Goal: Recover the NISS application ID from a Portuguese Seguran\u00e7a Social NISS application submitted around April 15, 2026.</p>\n<p>Background:</p>\n<p>A NISS application was submitted online through the Portuguese Seguran\u00e7a Social website around April 15, 2026. The application was completed successfully, but the application ID was not saved.</p>\n<p>A second application was submitted a few days ago and produced:</p>\n<p>\"O pedido com ID 651002 foi registado.\"</p>\n<p>The local Seguran\u00e7a Social office says they cannot locate the April application without its application ID.</p>\n<p>We are attempting to determine whether evidence of the April application still exists on this Mac.</p>\n<p>System:</p>\n<p>macOS</p>\n<p>Safari was definitely used.</p>\n<p>Chrome may also have been used if Safari was giving problems.</p>\n<p>The application was submitted around April 15, 2026 (search roughly April 10\u201320 if needed).</p>\n<p>Tasks:</p>\n<p>Search Safari history databases for visits to:</p>\n<p>Seguran\u00e7a Social</p>\n<p>NISS application pages</p>\n<p><a href=\"http://gov.pt\">gov.pt</a> pages related to NISS</p>\n<p>URLs containing:</p>\n<p>niss</p>\n<p>seguranca</p>\n<p>seg-social</p>\n<p><a href=\"http://gov.pt\">gov.pt</a></p>\n<p>seguranca-social</p>\n<p>Search Chrome history databases for the same.</p>\n<p>Look for:</p>\n<p>URLs containing application IDs.</p>\n<p>Page titles containing application IDs.</p>\n<p>Cached copies of confirmation pages.</p>\n<p>Downloads, PDFs, screenshots, or saved pages from that time period.</p>\n<p>Browser session restore data.</p>\n<p>Browser cache entries related to the submission confirmation page.</p>\n<p>Search the filesystem for:</p>\n<p>\"pedido\"</p>\n<p>\"NISS\"</p>\n<p>\"ID\"</p>\n<p>\"Seguran\u00e7a Social\"</p>\n<p>\"Seguranca Social\"</p>\n<p>\"seg-social\"</p>\n<p>\"651002\"</p>\n<p>Any screenshots created around April 15\u201320, 2026.</p>\n<p>Check:</p>\n<p>Safari History.db</p>\n<p>Chrome History SQLite databases</p>\n<p>Safari Recently Closed Tabs data</p>\n<p>Browser cache directories</p>\n<p>Desktop, Downloads, Documents, and Pictures folders</p>\n<p>Produce a report showing:</p>\n<p>All candidate URLs</p>\n<p>All candidate page titles</p>\n<p>Any screenshots or files discovered</p>\n<p>Any evidence suggesting an earlier NISS application</p>\n<p>Any potential application IDs discovered</p>\n<p>Important:</p>\n<p>Do not modify any files.</p>\n<p>Operate read-only.</p>\n<p>Preserve privacy and only inspect artifacts relevant to recovering the NISS application ID.</p>\n<p>If Safari databases require special handling because Safari is open, make a temporary copy before querying them.</p>\n<p>Success Criteria:</p>\n<p>Recover the April application ID, or provide the strongest available evidence that the April application was submitted, including dates, URLs, cached pages, browser history entries, or screenshots.</p>",
+          "timestamp": "2026-06-08T16:26:25.651Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "fts",
+            "token-overlap"
+          ],
+          "message_id": "72709",
+          "score": 31.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "Andy family ",
+          "timestamp": "2026-06-11T02:24:47.701Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "fts",
+            "token-overlap"
+          ],
+          "message_id": "72372",
+          "score": 31.3,
+          "sender_name": "JBFLY",
+          "text": "Well. I'm tired of this. I think I am done for now. At least until you will respect this relationship and treat me with enough dignity to talk to me. I'm done just talking into the void. You have done this over and over. It's just too painful.",
+          "timestamp": "2026-06-09T18:35:54.942Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "fts",
+            "token-overlap"
+          ],
+          "message_id": "71214",
+          "score": 31.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "I want you to explain to me what you want from me and what you want from this relationship we have right now. So we are on the same page. Are you considering coming back to be with me? We go from there or are you dead set on staying and building a life in Portugal? Straight up tell me",
+          "timestamp": "2026-06-07T15:51:24.554Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "fts",
+            "token-overlap"
+          ],
+          "message_id": "71208",
+          "score": 31.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "This isn't a relationship ",
+          "timestamp": "2026-06-07T15:45:17.825Z"
+        }
+      ],
+      "score_case": true,
+      "tags": [
+        "control-memory",
+        "structured-memory",
+        "hallucination"
+      ]
+    },
+    {
+      "answer": "Addy is Adrienne Pe\u00f1a, who is the user's girlfriend.",
+      "answer_path": "model",
+      "case_id": "alias_identity_use",
+      "checks": {
+        "answer_contains_all": true,
+        "answer_contains_any": true,
+        "answer_contains_pool": true,
+        "answer_not_contains": true,
+        "answer_path": true,
+        "citation_required": true,
+        "evidence_chat_any": true,
+        "evidence_sender_any": true,
+        "expected_actions": true,
+        "min_evidence": true,
+        "plan_answer_kind_any": true,
+        "plan_people_all": true,
+        "plan_people_any": true,
+        "plan_preferred_chat_any": true,
+        "plan_preferred_sender_any": true,
+        "plan_time_hint_any": true,
+        "source_classes_expected": true,
+        "source_classes_no_fake_archive": true,
+        "top_evidence_chat_any": true,
+        "top_evidence_sender_any": true
+      },
+      "context_budget_class": "short",
+      "control_turns": [],
+      "elapsed_ms": 1699,
+      "enabled": true,
+      "evidence": [
+        {
+          "chat_id": "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[1]",
+          "excerpt": "I took half the addy...\nContext before:\n- Adrienne Pe\u00f1a @ 2026-06-02T19:06:12.000Z: Ya\n- JBFLY @ 2026-06-02T19:06:58.542Z: Now you just need a dishwasher!\n- JBFLY @ 2026-06-02T19:34:09.387Z: How are you doing today? Feeling rested?\nContext after:\n- Adrienne Pe\u00f1a @ 2026-06-02T19:39:28.000Z: Bc they r alot this morning\n- Adrienne Pe\u00f1a @ 2026-06-02T19:39:34.000Z: So many questions\n- JBFLY @ 2026-06-02T19:39:46.253Z: What about?",
+          "message_id": "67491",
+          "score": 116.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "timestamp": "2026-06-02T19:39:16.000Z"
+        },
+        {
+          "chat_id": "!YGAFJY7Qdw1IKZstQKmS:beeper.local",
+          "chat_name": "La Familia (+Addy)",
+          "citation_id": "[2]",
+          "excerpt": "Addy must be landing \ud83d\udeec about now \ud83d\udc83...\nContext before:\n- Thomas Wright @ 2026-05-17T09:53:56.000Z: <a href=\"https://matrix.to/#/@whatsapp_lid-162882390077517:beeper.local\" rel=\"noopener noreferrer\" target=\"_blank\">John A Bonewitz</a>  not sure if I mentioned it but you can request movies/tv shows on <a href=\"https://requests.tomanna.uk/\">https://requests.tomanna.uk/</a>\n- Thomas Wright @ 2026-05-17T09:54:00.000Z: just login with plex\n- Thomas Wright @ 2026-05-17T09:54:28.000Z: there were a couple shows you'd asked me about\nContext after:\n- Adrienne Pe\u00f1a @ 2026-05-17T10:02:21.000Z: About to land\n- Adrienne Pe\u00f1a @ 2026-05-17T10:02:26.000Z: What a long journey\n- Adrienne Pe\u00f1a @ 2026-05-17T10:02:31.000Z: Ready for a nap lol!",
+          "message_id": "61907",
+          "score": 106.3,
+          "sender_name": "Lorene Bonewitz",
+          "timestamp": "2026-05-17T09:55:40.000Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[3]",
+          "excerpt": "oh addy...\nContext before:\n- Adrienne Pe\u00f1a @ 2026-06-11T02:23:22.861Z: I want to hold you everyday\n- Adrienne Pe\u00f1a @ 2026-06-11T02:23:30.159Z: I been dreaming of you non stop\n- Adrienne Pe\u00f1a @ 2026-06-11T02:23:42.223Z: Idk\nContext after:\n- Adrienne Pe\u00f1a @ 2026-06-11T02:23:57.326Z: I want to get married and settle down\n- Adrienne Pe\u00f1a @ 2026-06-11T02:24:05.102Z: And you seem to not want that\n- Adrienne Pe\u00f1a @ 2026-06-11T02:24:23.739Z: I want a house with a garden and then travel on weekends",
+          "message_id": "72702",
+          "score": 96.3,
+          "sender_name": "JBFLY",
+          "timestamp": "2026-06-11T02:23:54.677Z"
+        },
+        {
+          "chat_id": "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[4]",
+          "excerpt": "It's not so black and white addy...\nContext before:\n- JBFLY @ 2026-06-08T22:52:03.196Z: Almost midnight here. I'll stay awake, let me know!\n- Adrienne Pe\u00f1a @ 2026-06-08T23:57:36.000Z: You just gave me all the information there\n- Adrienne Pe\u00f1a @ 2026-06-08T23:57:42.000Z: You won't choose me\nContext after:\n- Adrienne Pe\u00f1a @ 2026-06-08T23:57:50.000Z: So your breaking up with me\n- Adrienne Pe\u00f1a @ 2026-06-08T23:57:52.000Z: There\n- JBFLY @ 2026-06-08T23:58:01.817Z: I'm not. but I'm being honest with you",
+          "message_id": "72205",
+          "score": 96.3,
+          "sender_name": "JBFLY",
+          "timestamp": "2026-06-08T23:57:50.261Z"
+        },
+        {
+          "chat_id": "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[5]",
+          "excerpt": "Got Addy withdrawal...\nContext before:\n- JBFLY @ 2026-06-02T18:35:06.488Z: Drinking sparkling wine and beer\n- Adrienne Pe\u00f1a @ 2026-06-02T18:36:21.000Z: Awe\n- JBFLY @ 2026-06-02T18:46:18.961Z: Missing you terribly today!\nContext after:\n- JBFLY @ 2026-06-02T18:47:47.920Z: So Calvin and Stash's wedding is December 27th. What if I fly to Texas for last bit if December, then fly to Hawaii for wedding and stay with you into January... Is it a bit more calm in January?\n- Adrienne Pe\u00f1a @ 2026-06-02T18:48:18.000Z: Oct would be better if you want time with.me\n- JBFLY @ 2026-06-02T18:48:34.709Z: Thats all I want...",
+          "message_id": "67442",
+          "score": 96.3,
+          "sender_name": "JBFLY",
+          "timestamp": "2026-06-02T18:46:38.292Z"
+        }
+      ],
+      "evidence_count": 5,
+      "expected_actions": [],
+      "expected_path": "model",
+      "expected_sources": [
+        "memory"
+      ],
+      "failures": [],
+      "inferred_actions": [],
+      "inferred_sources": [
+        "memory"
+      ],
+      "memory_state": {
+        "facts": [
+          {
+            "object": "Adrienne Pe\u00f1a",
+            "predicate": "identity",
+            "source": "user-approved fact",
+            "subject": "Addy"
+          },
+          {
+            "object": "girlfriend",
+            "predicate": "relationship_to_user",
+            "source": "user-approved fact",
+            "subject": "Adrienne Pe\u00f1a"
+          }
+        ]
+      },
+      "metrics_only": false,
+      "notes": "Identity and relationship facts must be combined from memory through the model path; phrased to avoid the canonical lookup shape.",
+      "passed": true,
+      "plan": {
+        "answer_kind": "fact",
+        "chat_hints": [],
+        "normalized_question": "Tell me who Addy is.",
+        "people": [
+          "Adrienne Pe\u00f1a"
+        ],
+        "preferred_chats": [
+          "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "!E2el8v5ehokes0vsc6J7:beeper.local",
+          "!GLJrTseM2r8nla9D5GZ2:beeper.local",
+          "!YGAFJY7Qdw1IKZstQKmS:beeper.local",
+          "!n98tUjj3AJPCVKbQgU1e:beeper.local",
+          "!yEgc4cgQEjpmXY3FU5Bs:beeper.local"
+        ],
+        "preferred_senders": [
+          "Adrienne Pe\u00f1a"
+        ],
+        "search_queries": [
+          "Adrienne Pe\u00f1a",
+          "Addy",
+          "Adrienne Pena",
+          "who is Adrienne Pe\u00f1a"
+        ],
+        "time_hint": "any"
+      },
+      "question": "Tell me who Addy is.",
+      "retrieval": [
+        {
+          "chat_id": "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "preferred-chat",
+            "preferred-sender",
+            "token-overlap"
+          ],
+          "message_id": "67491",
+          "score": 116.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "I took half the addy",
+          "timestamp": "2026-06-02T19:39:16.000Z"
+        },
+        {
+          "chat_id": "!YGAFJY7Qdw1IKZstQKmS:beeper.local",
+          "chat_name": "La Familia (+Addy)",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "preferred-chat",
+            "token-overlap"
+          ],
+          "message_id": "61907",
+          "score": 106.3,
+          "sender_name": "Lorene Bonewitz",
+          "text": "Addy must be landing \ud83d\udeec about now \ud83d\udc83",
+          "timestamp": "2026-05-17T09:55:40.000Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "fts",
+            "preferred-chat",
+            "token-overlap"
+          ],
+          "message_id": "72702",
+          "score": 96.3,
+          "sender_name": "JBFLY",
+          "text": "oh addy",
+          "timestamp": "2026-06-11T02:23:54.677Z"
+        },
+        {
+          "chat_id": "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "preferred-chat",
+            "token-overlap"
+          ],
+          "message_id": "72205",
+          "score": 96.3,
+          "sender_name": "JBFLY",
+          "text": "It's not so black and white addy",
+          "timestamp": "2026-06-08T23:57:50.261Z"
+        },
+        {
+          "chat_id": "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "fts",
+            "preferred-chat",
+            "token-overlap"
+          ],
+          "message_id": "67442",
+          "score": 96.3,
+          "sender_name": "JBFLY",
+          "text": "Got Addy withdrawal",
+          "timestamp": "2026-06-02T18:46:38.292Z"
+        }
+      ],
+      "score_case": true,
+      "tags": [
+        "control-memory",
+        "structured-memory",
+        "paraphrase"
+      ]
+    },
+    {
+      "answer": "Addy is Adrienne Pe\u00f1a, who is your girlfriend. She sent the address: Malmerendas Boutique Lodging Rua Dr. Alves da Veiga, 186 | 4000-072 \u2013 Porto, Portugal [2].",
+      "answer_path": "model",
+      "case_id": "mixed_source_paraphrase",
+      "checks": {
+        "answer_contains_all": true,
+        "answer_contains_any": true,
+        "answer_contains_pool": true,
+        "answer_not_contains": true,
+        "answer_path": true,
+        "citation_required": true,
+        "evidence_chat_any": true,
+        "evidence_sender_any": true,
+        "expected_actions": true,
+        "min_evidence": true,
+        "plan_answer_kind_any": true,
+        "plan_people_all": true,
+        "plan_people_any": true,
+        "plan_preferred_chat_any": true,
+        "plan_preferred_sender_any": true,
+        "plan_time_hint_any": true,
+        "source_classes_expected": true,
+        "source_classes_no_fake_archive": true,
+        "top_evidence_chat_any": true,
+        "top_evidence_sender_any": true
+      },
+      "context_budget_class": "short",
+      "control_turns": [],
+      "elapsed_ms": 2673,
+      "enabled": true,
+      "evidence": [
+        {
+          "chat_id": "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[1]",
+          "excerpt": "I took half the addy\nContext before:\n- Adrienne Pe\u00f1a @ 2026-06-02T19:06:12.000Z: Ya\n- JBFLY @ 2026-06-02T19:06:58.542Z: Now you just need a dishwasher!\n- JBFLY @ 2026-06-02T19:34:09.387Z: How are you doing today? Feeling rested?\nContext after:\n- Adrienne Pe\u00f1a @ 2026-06-02T19:39:28.000Z: Bc they r alot this morning\n- Adrienne Pe\u00f1a @ 2026-06-02T19:39:34.000Z: So many questions\n- JBFLY @ 2026-06-02T19:39:46.253Z: What about?",
+          "message_id": "67491",
+          "score": 116.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "timestamp": "2026-06-02T19:39:16.000Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[2]",
+          "excerpt": "Malmerendas Boutique Lodging Rua Dr. Alves da Veiga, 186 | 4000-072 \u2013 Porto, Portugal\nContext before:\n- JBFLY @ 2026-05-26T08:49:12.663Z: https://maps.app.goo.gl/vNkfshaZd1xcj8Y77\n- JBFLY @ 2026-05-26T10:51:53.048Z: [image: PXL_20260526_104512030~2.jpg]\nContext after:\n- Adrienne Pe\u00f1a @ 2026-05-26T13:56:17.982Z: +351 (262) 831700\n- Adrienne Pe\u00f1a @ 2026-05-26T13:56:22.799Z: [image: 26434.png]\n- JBFLY @ 2026-05-26T18:09:25.117Z: [image: PXL_20260526_180804108.MP.jpg]",
+          "message_id": "65822",
+          "score": 116.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "timestamp": "2026-05-26T13:12:48.945Z"
+        },
+        {
+          "chat_id": "!YGAFJY7Qdw1IKZstQKmS:beeper.local",
+          "chat_name": "La Familia (+Addy)",
+          "citation_id": "[3]",
+          "excerpt": "Addy must be landing \ud83d\udeec about now \ud83d\udc83\nContext before:\n- Thomas Wright @ 2026-05-17T09:53:56.000Z: <a href=\"https://matrix.to/#/@whatsapp_lid-162882390077517:beeper.local\" rel=\"noopener noreferrer\" target=\"_blank\">John A Bonewitz</a>  not sure if I mentioned it but you can request movies/tv shows on <a href=\"https://requests.tomanna.uk/\">https://requests.tomanna.uk/</a>\n- Thomas Wright @ 2026-05-17T09:54:00.000Z: just login with plex\n- Thomas Wright @ 2026-05-17T09:54:28.000Z: there were a couple shows you'd asked me about\nContext after:\n- Adrienne Pe\u00f1a @ 2026-05-17T10:02:21.000Z: About to land\n- Adrienne Pe\u00f1a @ 2026-05-17T10:02:26.000Z: What a long journey\n- Adrienne Pe\u00f1a @ 2026-05-17T10:02:31.000Z: Ready for a nap lol!",
+          "message_id": "61907",
+          "score": 108.3,
+          "sender_name": "Lorene Bonewitz",
+          "timestamp": "2026-05-17T09:55:40.000Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[4]",
+          "excerpt": "I'll meet someone who actually cares about my feelings too\nContext before:\n- Adrienne Pe\u00f1a @ 2026-06-10T18:49:39.871Z: I. Mean bc you don't choose me\n- JBFLY @ 2026-06-10T18:49:53.212Z: I'm so sorry babe.\n- JBFLY @ 2026-06-10T18:50:14.606Z: I just can't go back there.\nContext after:\n- JBFLY @ 2026-06-10T18:50:20.619Z: Not yet\n- JBFLY @ 2026-06-10T18:50:29.874Z: God I hope so\n- JBFLY @ 2026-06-10T18:50:36.720Z: You deserve that",
+          "message_id": "72575",
+          "score": 106.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "timestamp": "2026-06-10T18:50:21.627Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "citation_id": "[5]",
+          "excerpt": "But your a fucking lost person who doesn't know what they feel\nContext before:\n- JBFLY @ 2026-06-10T18:34:31.958Z: I will always love you.\n- Adrienne Pe\u00f1a @ 2026-06-10T18:34:47.216Z: I honestly don't believe you do\n- Adrienne Pe\u00f1a @ 2026-06-10T18:35:02.267Z: If you did you would make this work\nContext after:\n- JBFLY @ 2026-06-10T18:35:27.792Z: I tried so hard.\n- Adrienne Pe\u00f1a @ 2026-06-10T18:35:36.875Z: No you didn't\n- Adrienne Pe\u00f1a @ 2026-06-10T18:35:50.536Z: Thank you for ruining my day",
+          "message_id": "72502",
+          "score": 106.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "timestamp": "2026-06-10T18:35:25.427Z"
+        }
+      ],
+      "evidence_count": 5,
+      "expected_actions": [],
+      "expected_path": "model",
+      "expected_sources": [
+        "memory",
+        "archive"
+      ],
+      "failures": [],
+      "inferred_actions": [],
+      "inferred_sources": [
+        "archive",
+        "memory"
+      ],
+      "memory_state": {
+        "facts": [
+          {
+            "object": "Adrienne Pe\u00f1a",
+            "predicate": "identity",
+            "source": "user-approved fact",
+            "subject": "Addy"
+          },
+          {
+            "object": "girlfriend",
+            "predicate": "relationship_to_user",
+            "source": "user-approved fact",
+            "subject": "Adrienne Pe\u00f1a"
+          }
+        ]
+      },
+      "metrics_only": false,
+      "notes": "Relationship comes from structured memory; the address comes from archive retrieval with a citation. Sources must not be conflated.",
+      "passed": true,
+      "plan": {
+        "answer_kind": "fact",
+        "chat_hints": [
+          "Adrienne Pe\u00f1a",
+          "La Familia (+Addy)"
+        ],
+        "normalized_question": "Remind me who Addy is, and what address did she send?",
+        "people": [
+          "Adrienne Pe\u00f1a"
+        ],
+        "preferred_chats": [
+          "Adrienne Pe\u00f1a",
+          "La Familia (+Addy)",
+          "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "!E2el8v5ehokes0vsc6J7:beeper.local",
+          "!GLJrTseM2r8nla9D5GZ2:beeper.local",
+          "!YGAFJY7Qdw1IKZstQKmS:beeper.local",
+          "!n98tUjj3AJPCVKbQgU1e:beeper.local",
+          "!yEgc4cgQEjpmXY3FU5Bs:beeper.local"
+        ],
+        "preferred_senders": [
+          "Adrienne Pe\u00f1a"
+        ],
+        "search_queries": [
+          "Addy address",
+          "Adrienne Pe\u00f1a address",
+          "Adrienne Pena address",
+          "Addy sent address",
+          "Adrienne Pe\u00f1a location",
+          "Addy house address"
+        ],
+        "time_hint": "any"
+      },
+      "question": "Remind me who Addy is, and what address did she send?",
+      "retrieval": [
+        {
+          "chat_id": "!BvrUOnpGit3VaGsH9vPA:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "preferred-chat",
+            "preferred-sender",
+            "token-overlap"
+          ],
+          "message_id": "67491",
+          "score": 116.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "I took half the addy",
+          "timestamp": "2026-06-02T19:39:16.000Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "fts",
+            "preferred-chat",
+            "preferred-sender",
+            "token-overlap"
+          ],
+          "message_id": "65822",
+          "score": 116.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "Malmerendas Boutique Lodging\nRua Dr. Alves da Veiga, 186 | 4000-072 \u2013 Porto, Portugal",
+          "timestamp": "2026-05-26T13:12:48.945Z"
+        },
+        {
+          "chat_id": "!YGAFJY7Qdw1IKZstQKmS:beeper.local",
+          "chat_name": "La Familia (+Addy)",
+          "match_reasons": [
+            "chat-match",
+            "exact-substring",
+            "fts",
+            "multi-query",
+            "preferred-chat",
+            "token-overlap"
+          ],
+          "message_id": "61907",
+          "score": 108.3,
+          "sender_name": "Lorene Bonewitz",
+          "text": "Addy must be landing \ud83d\udeec about now \ud83d\udc83",
+          "timestamp": "2026-05-17T09:55:40.000Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "72575",
+          "score": 106.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "I'll meet someone who actually cares about my feelings too",
+          "timestamp": "2026-06-10T18:50:21.627Z"
+        },
+        {
+          "chat_id": "!yEgc4cgQEjpmXY3FU5Bs:beeper.local",
+          "chat_name": "Adrienne Pe\u00f1a",
+          "match_reasons": [
+            "exact-substring",
+            "preferred-chat",
+            "preferred-sender"
+          ],
+          "message_id": "72502",
+          "score": 106.3,
+          "sender_name": "Adrienne Pe\u00f1a",
+          "text": "But your a fucking lost person who doesn't know what they feel ",
+          "timestamp": "2026-06-10T18:35:25.427Z"
+        }
+      ],
+      "score_case": true,
+      "tags": [
+        "control-memory",
+        "mixed-source",
+        "paraphrase"
+      ]
+    }
+  ],
+  "runtime": {
+    "base_url": "http://127.0.0.1:8090/v1",
+    "max_output_tokens": 250,
+    "model": "gemma4-google-26b-a4b-q4_0-local",
+    "planner_max_output_tokens": 0,
+    "planner_temperature": 0.0,
+    "temperature": 0.0
+  },
+  "scored_cases": 8,
+  "suite_name": "control-memory",
+  "total_cases": 8
+}

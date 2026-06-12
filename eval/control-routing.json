@@ -1,0 +1,56 @@
+{
+  "name": "control-routing",
+  "description": "Deterministic product-routing behavior: structured memory commands and canonical lookups. These cases verify application code, not model quality; expected_path is 'direct' and the LLM must not be needed.",
+  "cases": [
+    {
+      "id": "alias_write_proposes_confirmation",
+      "question": "Remember that Addy is Adrienne Peña.",
+      "tags": ["control-routing", "memory-write"],
+      "notes": "Canonical structured alias write. Must propose a structured add-alias action and ask for confirmation without calling the model.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "direct",
+      "expected_actions": ["confirm-memory-write", "add-alias"],
+      "answer_contains_any": ["confirm"]
+    },
+    {
+      "id": "relationship_write_proposes_confirmation",
+      "question": "Remember that Anna is my sister.",
+      "tags": ["control-routing", "memory-write"],
+      "notes": "Relationship writes must not be mis-parsed as alias writes ('my sister' is not a canonical name).",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "direct",
+      "expected_actions": ["confirm-memory-write", "add-relationship-fact"],
+      "answer_contains_any": ["confirm"],
+      "answer_not_contains": ["alias"]
+    },
+    {
+      "id": "canonical_who_is_lookup",
+      "question": "Who is Anna again?",
+      "tags": ["control-routing", "structured-memory"],
+      "notes": "Canonical 'who is X again' command shape answers from stored facts deterministically.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "direct",
+      "memory_state": {
+        "facts": [
+          {
+            "subject": "Anna Bonewitz",
+            "predicate": "relationship_to_user",
+            "object": "sister",
+            "source": "user-approved fact"
+          }
+        ]
+      },
+      "expected_sources": ["memory"],
+      "answer_contains_any": ["sister"]
+    }
+  ]
+}
