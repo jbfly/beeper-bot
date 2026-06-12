@@ -1252,7 +1252,12 @@ def ask_archive(
         sender_name = preferred_senders[0].strip()
         first_token = sender_name.casefold().split()[0] if sender_name else ""
         if first_token and first_token in question.casefold() and ("address" in question.casefold() or any(verb in question.casefold() for verb in SPEAKER_VERBS)):
-            restrict_senders = [sender_name]
+            # Hard-restricting to a sender the archive has never seen (the
+            # planner can invent ones like "the Rooiels host") guarantees
+            # zero results; only restrict to real senders.
+            known_senders = {name.casefold() for name in collect_search_catalog(config).sender_names}
+            if sender_name.casefold() in known_senders:
+                restrict_senders = [sender_name]
     slice_mode = _needs_slice_context(question, plan)
     queries = plan.all_queries(effective_question) + _supplement_search_queries(effective_question, plan, resolved_people)
     retrieval_limit = max(limit or config.llm.max_input_snippets, config.llm.max_input_snippets)

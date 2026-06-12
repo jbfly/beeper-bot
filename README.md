@@ -36,7 +36,7 @@ Point the bot at the local `ai-ops` proxy, not the raw backend port:
 ```toml
 [llm]
 base_url = "http://127.0.0.1:8090/v1"
-model = "gemma4-google-26b-a4b-q4_0-local"
+model = "gemma4-google-12b-q6_k-local"
 ```
 
 That proxy starts `llama-server` on demand and unloads it when idle. See `~/git/ai-ops/docs/llama-arbiter.md`.
@@ -49,39 +49,28 @@ Run the starter benchmark suite:
 - add `--json` for machine-readable output
 - add `--output state/eval-latest.json` to save a run
 
-Current deterministic baseline on the live local Gemma stack (post de-shim;
-all control-memory and ladder cases now genuinely reach the model, see
-`docs/control-chat-memory-and-eval-plan.md` §4.4):
+Active model since 2026-06-12: **Gemma 4 12B Q6_K**
+(`gemma4-google-12b-q6_k-local`), chosen for text parity with the 26B plus
+native audio and image input for the multimodal roadmap. Current
+deterministic baseline (43-chat archive, porter-stemmed FTS, schema v5;
+verified identical across two consecutive runs):
 
-- `starter`: `6/8` scored passed (known borderline: `anna_owed_john`, `addy_and_i_may18`)
-- `core`: `18/20` scored passed (known borderline: `anna_owed_john`, `pensao_amor_address`)
+- `starter`: `8/8` scored passed
+- `core`: `20/20` scored passed
 - `slice`: `14/14` scored passed
 - `control-routing`: `3/3` passed (deterministic product routing, no LLM)
 - `control-memory`: `8/8` scored passed through the model path
-- `context-ladder`: `4/9` scored passed; families degrade at the medium/long
-  rungs, which is the real context-pressure signal the suite exists to
-  measure (the earlier `9/9` was scored against deterministic shims)
-
 - `catchup`: `5/5` scored passed (real Bom Sucesso group-chat digests)
+- `context-ladder`: `3/9` scored passed — families degrade at the medium
+  rung; this is the honest context-pressure frontier, not a regression
+  (the historical `9/9` was scored against deterministic shims)
 
-After the 43-chat archive expansion (12k messages) the 26B baseline held:
-core improved to `19/20`, slice `13/14` (one borderline flake), starter
-unchanged, control-memory `7/8` — the pronoun follow-up now answers
-correctly from the control turn but without re-grounding in an archive
-citation. Single-case run-to-run flips are expected; see the determinism
-caveat in `docs/control-chat-memory-and-eval-plan.md` §4.3.1.
-
-`anna_owed_john` fails because FTS has no stemming (`owe` does not match
-`owes` in a third-party message); switching `message_fts` to a porter
-tokenizer is the identified fix and needs a schema migration.
-
-First shootout entry — Gemma 4 12B Q6_K (`state/eval-12b/`, same
-deterministic settings): starter 6/8, core 18/20, slice 14/14,
-control-routing 3/3, control-memory 8/8, catchup 5/5, context-ladder 3/9.
-Within noise of the 26B baseline on low-pressure suites (it passes
-`anna_owed_john`, fails `adriana_address`/`tom_automation_link` instead),
-one rung worse under context pressure, roughly 2x slower per case (dense
-12B vs the 26B's 4B-active MoE), but it adds native audio and ~5 GB more
-VRAM headroom.
+The porter-stemming migration (schema v5) closed the `owe`/`owes`
+morphology gap that capped starter and core for weeks. Full run outputs:
+`state/eval-12b/`. The 26B (`ai-model gemma4`) remains available; it is
+~2x faster per case (4B-active MoE) and one ladder rung stronger, but has
+no audio path. Single-case run-to-run flips can still occur from
+llama-server KV-cache reuse; see
+`docs/control-chat-memory-and-eval-plan.md` §4.3.1.
 
 Use `--deterministic` for comparison runs. That pins answer and planner temperatures to `0.0` unless explicitly overridden.

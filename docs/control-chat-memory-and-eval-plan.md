@@ -120,14 +120,20 @@ Rules:
 
 Status note: the first-pass control-memory and ladder results predated these
 rules and were scored against deterministic shortcut paths. After the
-de-shim (2026-06-12) the honest deterministic baseline on the 26B stack is:
-starter 6/8, core 18/20, slice 14/14, control-routing 3/3 (direct),
-control-memory 8/8 (model path), context-ladder 4/9 with families failing at
-the medium/long rungs. The ladder drop from the shimmed 9/9 is expected and
-is the suite working as designed. Known borderline archive cases
-(`anna_owed_john`, `pensao_amor_address`, `addy_and_i_may18`) trace to
-planner-output sensitivity and missing FTS stemming, not to the memory
-layer.
+de-shim (2026-06-12) the honest 26B baseline was starter 6/8, core 18/20,
+slice 14/14, control-memory 8/8, context-ladder 4/9.
+
+Update (2026-06-12, later): after switching the active model to Gemma 4
+12B Q6_K and landing the porter-stemming FTS migration (schema v5), the
+baseline is clean on all low-pressure suites — starter 8/8, core 20/20,
+slice 14/14, control-routing 3/3, control-memory 8/8, catchup 5/5 —
+verified identical across two consecutive runs. The borderline archive
+failures (`anna_owed_john` class) were FTS morphology misses, now fixed.
+Context-ladder stands at 3/9 with families failing at the medium rung;
+that is the open frontier this harness exists to measure. One guard was
+added along the way: the single-sender hard restriction only applies to
+senders that actually exist in the archive, because the planner can invent
+descriptive senders like "the Rooiels host".
 
 ## 5. New eval classes
 
