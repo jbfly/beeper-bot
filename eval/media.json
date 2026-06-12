@@ -1,0 +1,42 @@
+{
+  "name": "media",
+  "description": "Voice-memo lookup behavior over the live archive: verbatim transcript requests resolve deterministically; summary requests feed the full stored transcript to the model.",
+  "cases": [
+    {
+      "id": "memo_transcript_lookup",
+      "question": "Send me the transcript of my latest voice memo.",
+      "tags": ["media", "voice-memo", "routing"],
+      "notes": "Transcript requests must return the stored transcript verbatim via the direct path, not evidence-QA excerpts.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "direct",
+      "answer_contains_any": ["Voice memo from"]
+    },
+    {
+      "id": "memo_summary_by_duration",
+      "question": "Summarize the 21 minute voice memo.",
+      "tags": ["media", "voice-memo", "summary"],
+      "notes": "Duration hints select the memo; the model summarizes the full transcript, not a retrieval excerpt.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "model",
+      "answer_contains_any": ["summary"]
+    },
+    {
+      "id": "memo_lookup_no_match",
+      "question": "Transcribe the voice memo from Zebediah.",
+      "tags": ["media", "voice-memo", "routing"],
+      "notes": "A sender with no transcribed memos must get an honest empty result, not a hallucinated transcript.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "direct",
+      "answer_contains_any": ["no transcribed voice memos"]
+    }
+  ]
+}

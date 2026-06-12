@@ -676,6 +676,68 @@ def _direct_memory_write_answer(question: str) -> AskResponse | None:
     )
 
 
+def _direct_memo_answer(config: AppConfig, question: str, llm_client: Any | None = None) -> AskResponse | None:
+    """Voice-memo lookup requests bypass evidence QA: transcripts are stored
+    verbatim and excerpt caps would shred them. Transcript requests resolve
+    deterministically; summary requests feed the full transcript to the
+    model."""
+    from .media import find_voice_transcripts, format_memo_header, parse_memo_request, summarize_transcript
+
+    memo_request = parse_memo_request(question)
+    if memo_request is None:
+        return None
+    memos = find_voice_transcripts(
+        config,
+        mine_only=memo_request.mine_only,
+        sender_query=memo_request.sender_query,
+        duration_minutes=memo_request.duration_minutes,
+        limit=1,
+    )
+    if not memos:
+        filters = []
+        if memo_request.sender_query:
+            filters.append(f"from {memo_request.sender_query}")
+        if memo_request.duration_minutes is not None:
+            filters.append(f"around {memo_request.duration_minutes} minutes")
+        if memo_request.mine_only:
+            filters.append("sent by you")
+        detail = f" matching: {', '.join(filters)}" if filters else ""
+        answer = f"I have no transcribed voice memos{detail}. Run index-media to transcribe new ones."
+        return AskResponse(
+            question=question,
+            answer=answer,
+            evidence=[],
+            retrieval=_empty_retrieval(question),
+            plan=_direct_plan(question, answer_kind="fact"),
+            used_sources=[],
+            answer_path="direct",
+        )
+
+    memo = memos[0]
+    header = format_memo_header(memo)
+    if memo_request.action == "transcript":
+        return AskResponse(
+            question=question,
+            answer=f"{header}:\n{memo['transcript']}",
+            evidence=[],
+            retrieval=_empty_retrieval(question),
+            plan=_direct_plan(question, answer_kind="fact"),
+            used_sources=["archive"],
+            answer_path="direct",
+        )
+
+    summary = summarize_transcript(config, memo, llm_client).strip()
+    return AskResponse(
+        question=question,
+        answer=f"{header} — summary:\n{summary}",
+        evidence=[],
+        retrieval=_empty_retrieval(question),
+        plan=_direct_plan(question, answer_kind="summary"),
+        used_sources=["archive"],
+        answer_path="model",
+    )
+
+
 def _format_control_context(
     control_turns: list[dict[str, Any]] | None = None,
     memory_state: dict[str, Any] | None = None,
@@ -1234,6 +1296,11 @@ def ask_archive(
     direct = _direct_memory_answer(question, memory_state)
     if direct is not None:
         trace_event("memory.direct_answer", {"question": question, "answer": direct.answer})
+        return direct
+
+    direct = _direct_memo_answer(config, question, llm_client)
+    if direct is not None:
+        trace_event("memo.direct_answer", {"question": question, "answer_path": direct.answer_path})
         return direct
 
     control_context = _format_control_context(control_turns, memory_state)

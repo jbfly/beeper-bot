@@ -199,7 +199,11 @@ class ControlBridge:
         )
 
     def _reply(self, text: str) -> str:
-        payload = text[: self.config.bridge.max_reply_chars].rstrip()
+        limit = self.config.bridge.max_reply_chars
+        if len(text) > limit:
+            payload = text[: limit - 14].rstrip() + "\n[truncated]"
+        else:
+            payload = text.rstrip()
         self.api_client.send_message(self.control_chat_id, payload)
         log(f"reply sent chars={len(payload)}")
         return payload

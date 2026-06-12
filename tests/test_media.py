@@ -9,7 +9,14 @@ import beeper_bot.media as media_mod
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
 from beeper_bot.db import open_db
-from beeper_bot.media import derive_message_media, pending_media_messages, run_derivation_pass
+from beeper_bot.llm import ask_archive
+from beeper_bot.media import (
+    derive_message_media,
+    find_voice_transcripts,
+    parse_memo_request,
+    pending_media_messages,
+    run_derivation_pass,
+)
 from beeper_bot.retrieval import search_archive
 from beeper_bot.sync import sync_chats
 
@@ -50,6 +57,7 @@ def _voice_message(idx: int, src_url: str) -> dict:
         "timestamp": f"2026-06-{idx:02d}T10:00:00Z",
         "senderID": "u1",
         "senderName": "Adrienne Peña",
+        "isSender": True,
         "type": "VOICE",
         "attachments": [
             {
@@ -84,7 +92,7 @@ def _image_message(idx: int, src_url: str) -> dict:
     }
 
 
-class MediaTest(unittest.TestCase):
+class MediaTestBase(unittest.TestCase):
     def _config_with_media(self):
         tmpdir = tempfile.TemporaryDirectory()
         config_path = Path(tmpdir.name) / "config.toml"
@@ -120,6 +128,8 @@ class MediaTest(unittest.TestCase):
         media_mod._ffprobe_duration = self._orig_duration
         media_mod._audio_chunk_wav = self._orig_chunk
 
+
+class MediaTest(MediaTestBase):
     def test_voice_memo_is_transcribed_chunked_and_indexed(self) -> None:
         config, client, tmpdir = self._config_with_media()
         self.addCleanup(tmpdir.cleanup)
@@ -181,6 +191,97 @@ class MediaTest(unittest.TestCase):
         result = derive_message_media(config, "voice-9", "chat-a", raw, "voice-memo", FakeMediaClient())
         self.assertEqual(result.status, "failed")
         self.assertIn("missing", result.error_text)
+
+
+class FakeSummarizer:
+    def __init__(self, summary: str = "Summary: a reminder about olive oil."):
+        self.summary = summary
+        self.prompts: list[str] = []
+
+    def summarize_text(self, config, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.summary
+
+
+class MemoRequestTest(unittest.TestCase):
+    def test_parse_transcript_and_summary_shapes(self) -> None:
+        req = parse_memo_request("Can you give me a transcript of my most recent voice memo?")
+        self.assertEqual(req.action, "transcript")
+        self.assertTrue(req.mine_only)
+
+        req = parse_memo_request("Summarize the 21 min memo")
+        self.assertEqual(req.action, "summary")
+        self.assertEqual(req.duration_minutes, 21)
+        self.assertFalse(req.mine_only)
+
+        req = parse_memo_request("Transcribe the last voice note from Adrienne")
+        self.assertEqual(req.action, "transcript")
+        self.assertEqual(req.sender_query, "Adrienne")
+
+    def test_parse_ignores_non_memo_questions(self) -> None:
+        self.assertIsNone(parse_memo_request("What address did Adriana send?"))
+        self.assertIsNone(parse_memo_request("Summarize the Bom Sucesso chat"))
+        self.assertIsNone(parse_memo_request("What did Anna say about the memo?"))
+
+
+class MemoLookupTest(MediaTestBase):
+    def _derived(self):
+        config, client, tmpdir = self._config_with_media()
+        run_derivation_pass(config, "voice-memo", limit=10, llm_client=FakeMediaClient())
+        return config, tmpdir
+
+    def test_find_voice_transcripts_filters_by_duration(self) -> None:
+        config, tmpdir = self._derived()
+        self.addCleanup(tmpdir.cleanup)
+        self.assertEqual(len(find_voice_transcripts(config)), 1)
+        # fake duration is 60s: a 1-minute filter matches, a 10-minute one does not
+        self.assertEqual(len(find_voice_transcripts(config, duration_minutes=1)), 1)
+        self.assertEqual(find_voice_transcripts(config, duration_minutes=10), [])
+
+    def test_ask_returns_full_transcript_directly(self) -> None:
+        config, tmpdir = self._derived()
+        self.addCleanup(tmpdir.cleanup)
+        response = ask_archive(
+            config,
+            "Give me the transcript of the latest voice memo.",
+            llm_client=FakeSummarizer(),
+            control_turns=[],
+            memory_state={},
+        )
+        self.assertEqual(response.answer_path, "direct")
+        self.assertIn("Voice memo from Adrienne Peña", response.answer)
+        self.assertIn("olive oil", response.answer)
+        self.assertNotIn("[voice memo transcript]", response.answer)
+
+    def test_ask_summarizes_memo_with_full_transcript(self) -> None:
+        config, tmpdir = self._derived()
+        self.addCleanup(tmpdir.cleanup)
+        summarizer = FakeSummarizer()
+        response = ask_archive(
+            config,
+            "Summarize my last voice memo",
+            llm_client=summarizer,
+            control_turns=[],
+            memory_state={},
+        )
+        self.assertEqual(response.answer_path, "model")
+        self.assertIn("Summary: a reminder about olive oil.", response.answer)
+        # the summarizer must have seen the whole transcript, not an excerpt
+        self.assertIn("chunk 3", summarizer.prompts[0])
+
+    def test_ask_reports_no_matching_memos(self) -> None:
+        config, tmpdir = self._derived()
+        self.addCleanup(tmpdir.cleanup)
+        response = ask_archive(
+            config,
+            "Transcribe the voice memo from Wolfgang",
+            llm_client=FakeSummarizer(),
+            control_turns=[],
+            memory_state={},
+        )
+        self.assertEqual(response.answer_path, "direct")
+        self.assertIn("no transcribed voice memos", response.answer)
+        self.assertIn("from Wolfgang", response.answer)
 
 
 if __name__ == "__main__":

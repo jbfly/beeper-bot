@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import subprocess
 import tempfile
 import urllib.parse
@@ -329,6 +330,132 @@ def derive_message_media(
         "error": result.error_text,
     })
     return result
+
+
+MEMO_NOUN_RE = re.compile(r"\b(?:voice\s+(?:memo|note|message)|memo)s?\b", re.IGNORECASE)
+TRANSCRIPT_INTENT_RE = re.compile(r"\b(?:transcript|transcribe|transcription|verbatim|word\s+for\s+word|read\s+(?:it\s+)?(?:out|back))\b", re.IGNORECASE)
+SUMMARY_INTENT_RE = re.compile(r"\b(?:summar|recap|tl;?dr|gist|main\s+points|overview)\w*\b", re.IGNORECASE)
+DURATION_RE = re.compile(r"\b(\d{1,3})\s*(?:-|\s)?\s*(?:min|mins|minute|minutes)\b", re.IGNORECASE)
+FROM_PERSON_RE = re.compile(r"\bfrom\s+([A-Za-zÀ-ÿ'. -]{2,40}?)(?:\s*(?:[?.!,]|$))", re.IGNORECASE)
+LATEST_RE = re.compile(r"\b(?:last|latest|most\s+recent|newest)\b", re.IGNORECASE)
+
+
+@dataclass(slots=True)
+class MemoRequest:
+    action: str  # "transcript" | "summary"
+    mine_only: bool = False
+    sender_query: str = ""
+    duration_minutes: int | None = None
+
+
+def parse_memo_request(question: str) -> MemoRequest | None:
+    """Generic detection of voice-memo lookup requests. Command shapes only
+    (memo noun plus a transcript/summary intent) — never question-literal."""
+    if not MEMO_NOUN_RE.search(question):
+        return None
+    if TRANSCRIPT_INTENT_RE.search(question):
+        action = "transcript"
+    elif SUMMARY_INTENT_RE.search(question):
+        action = "summary"
+    else:
+        return None
+    duration_match = DURATION_RE.search(question)
+    sender_match = FROM_PERSON_RE.search(question)
+    mine_only = bool(re.search(r"\bmy\b", question, re.IGNORECASE)) and not sender_match
+    return MemoRequest(
+        action=action,
+        mine_only=mine_only,
+        sender_query=(sender_match.group(1).strip() if sender_match else ""),
+        duration_minutes=(int(duration_match.group(1)) if duration_match else None),
+    )
+
+
+def find_voice_transcripts(
+    config: AppConfig,
+    *,
+    mine_only: bool = False,
+    sender_query: str = "",
+    duration_minutes: int | None = None,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Newest-first stored voice transcripts, with optional sender and
+    approximate-duration filters."""
+    clauses = ["d.kind = 'voice-memo'", "d.status = 'done'", "d.derived_text != ''"]
+    params: list[Any] = []
+    if mine_only:
+        clauses.append("m.is_sender = 1")
+    if sender_query.strip():
+        clauses.append("m.sender_name LIKE ?")
+        params.append(f"%{sender_query.strip()}%")
+    if duration_minutes is not None:
+        tolerance = max(60.0, duration_minutes * 60 * 0.15)
+        clauses.append("d.duration_seconds BETWEEN ? AND ?")
+        params.extend([duration_minutes * 60 - tolerance, duration_minutes * 60 + tolerance])
+    params.append(max(1, limit))
+    with open_db(config.archive.path) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT d.message_id, d.derived_text, d.duration_seconds, d.chunk_count,
+                   m.sender_name, m.timestamp, m.sort_key, c.name AS chat_name
+            FROM attachment_derived_text d
+            JOIN messages m ON m.message_id = d.message_id
+            LEFT JOIN chats c ON c.chat_id = m.chat_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY m.sort_key DESC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    results = []
+    for row in rows:
+        text = str(row["derived_text"])
+        if text.startswith(VOICE_PREFIX):
+            text = text[len(VOICE_PREFIX):].strip()
+        results.append(
+            {
+                "message_id": str(row["message_id"]),
+                "transcript": text,
+                "duration_seconds": float(row["duration_seconds"] or 0.0),
+                "chunk_count": int(row["chunk_count"] or 0),
+                "sender_name": str(row["sender_name"] or "unknown"),
+                "timestamp": str(row["timestamp"] or ""),
+                "chat_name": str(row["chat_name"] or ""),
+            }
+        )
+    return results
+
+
+def format_memo_header(memo: dict[str, Any]) -> str:
+    minutes, seconds = divmod(int(memo["duration_seconds"]), 60)
+    return (
+        f"Voice memo from {memo['sender_name']} in {memo['chat_name']} "
+        f"— {memo['timestamp'][:16].replace('T', ' ')} ({minutes}:{seconds:02d})"
+    )
+
+
+def summarize_transcript(config: AppConfig, memo: dict[str, Any], llm_client: Any | None = None) -> str:
+    prompt = (
+        f"Summarize this voice memo for the person catching up on it.\n"
+        "Cover the main points and any requests, plans, times, or names mentioned.\n"
+        "Keep it short. Do not invent content that is not in the transcript.\n"
+        "Do not output chain-of-thought. Return only the summary.\n\n"
+        f"{format_memo_header(memo)}\n\n"
+        f"Transcript:\n{memo['transcript']}"
+    )
+    if llm_client is not None and hasattr(llm_client, "summarize_text"):
+        return str(llm_client.summarize_text(config, prompt))
+    from .llm import OpenAiCompatLlmClient
+
+    client = llm_client if isinstance(llm_client, OpenAiCompatLlmClient) else OpenAiCompatLlmClient()
+    return client._post_chat(
+        config,
+        [
+            {"role": "system", "content": "Summarize transcripts faithfully. No hidden reasoning."},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=max(400, config.llm.max_output_tokens),
+        trace_phase="memo.summary",
+    )
 
 
 KIND_MESSAGE_TYPES = {"voice-memo": ("VOICE",), "image": ("IMAGE",)}
