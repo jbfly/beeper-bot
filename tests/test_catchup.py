@@ -5,7 +5,14 @@ import unittest
 from pathlib import Path
 
 from beeper_bot.beeper_api import MessagePage
-from beeper_bot.catchup import CatchupError, build_catchup_prompt, catchup_summary, resolve_chat
+from beeper_bot.catchup import (
+    CatchupError,
+    build_catchup_prompt,
+    catchup_summary,
+    parse_chat_digest_request,
+    resolve_chat,
+    resolve_chats,
+)
 from beeper_bot.config import load_config
 from beeper_bot.discovery import (
     add_dynamic_indexed_chat_ids,
@@ -124,6 +131,83 @@ class CatchupTest(unittest.TestCase):
         self.assertIn("Maria", prompt)
         self.assertIn("most recent messages", prompt)
         self.assertIn("...", prompt)
+
+
+class MultiChatCatchupTest(unittest.TestCase):
+    def _config_with_festival_chats(self):
+        tmpdir = tempfile.TemporaryDirectory()
+        config_path = Path(tmpdir.name) / "config.toml"
+        db_path = Path(tmpdir.name) / "archive.sqlite3"
+        config_path.write_text(
+            f'[archive]\npath = "{db_path}"\n\n[beeper]\nindexed_chat_ids = ["chat-lineup", "chat-debates", "chat-rangutans"]\n'
+        )
+        config = load_config(config_path)
+        client = FakeBeeperClient(
+            chats={
+                "chat-lineup": {"title": "Booom Artists and Lineup"},
+                "chat-debates": {"title": "Booom Actualities and Debates"},
+                "chat-rangutans": {"title": "Boomerangutans"},
+            },
+            messages={
+                "chat-lineup": [_message(1, "Maya", "Lineup drops Friday at noon.")],
+                "chat-debates": [_message(2, "Rui", "The shuttle schedule changed to hourly.")],
+                "chat-rangutans": [_message(3, "Pete", "Camp build starts June 20.")],
+            },
+        )
+        sync_chats(config, client)
+        return config, tmpdir
+
+    def test_resolve_chats_returns_all_matches_and_fuzzy_typos(self) -> None:
+        config, tmpdir = self._config_with_festival_chats()
+        self.addCleanup(tmpdir.cleanup)
+        names = {name for _, name in resolve_chats(config, "boom")}
+        self.assertEqual(len(names), 3)
+        # misspelling resolves via fuzzy matching
+        chats = resolve_chats(config, "boomerangatangs")
+        self.assertEqual(chats[0][1], "Boomerangutans")
+
+    def test_multi_chat_digest_combines_sections_and_advances_cursors(self) -> None:
+        config, tmpdir = self._config_with_festival_chats()
+        self.addCleanup(tmpdir.cleanup)
+        summarizer = FakeSummarizer("Digest with sections.")
+        result = catchup_summary(config, "boom", summarizer)
+        self.assertEqual(result.message_count, 3)
+        self.assertIn("3 chats", result.chat_name)
+        prompt = summarizer.prompts[0]
+        self.assertIn("## Booom Artists and Lineup", prompt)
+        self.assertIn("## Boomerangutans", prompt)
+        self.assertIn("shuttle schedule", prompt)
+
+        second = catchup_summary(config, "boom", summarizer)
+        self.assertEqual(second.message_count, 0)
+        self.assertIn("No new messages", second.summary)
+
+    def test_parse_chat_digest_request_shapes(self) -> None:
+        self.assertEqual(parse_chat_digest_request("Give me a summary of the boomerangatangs chat"), "boomerangatangs")
+        self.assertEqual(parse_chat_digest_request("Summarize all of the bom successo chats"), "bom successo")
+        self.assertEqual(parse_chat_digest_request("What's been happening in the Booom groups?"), "Booom")
+        self.assertEqual(parse_chat_digest_request("Catch me up on the Fellow Owners group chat"), "Fellow Owners")
+        # no digest intent or no chat noun -> not a digest request
+        self.assertIsNone(parse_chat_digest_request("What did Anna say in the chat?"))
+        self.assertIsNone(parse_chat_digest_request("Summarize the 21 min memo"))
+        self.assertIsNone(parse_chat_digest_request("What address did Adriana send?"))
+
+    def test_ask_routes_digest_requests_to_catchup(self) -> None:
+        from beeper_bot.llm import ask_archive
+
+        config, tmpdir = self._config_with_festival_chats()
+        self.addCleanup(tmpdir.cleanup)
+        summarizer = FakeSummarizer("Festival digest here.")
+        response = ask_archive(
+            config,
+            "Give me a summary of the boom chats",
+            llm_client=summarizer,
+            control_turns=[],
+            memory_state={},
+        )
+        self.assertEqual(response.answer_path, "model")
+        self.assertIn("Festival digest here.", response.answer)
+        self.assertIn("3 chats", response.answer)
 
 
 class DiscoveryTest(unittest.TestCase):

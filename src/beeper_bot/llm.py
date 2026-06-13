@@ -738,6 +738,31 @@ def _direct_memo_answer(config: AppConfig, question: str, llm_client: Any | None
     )
 
 
+def _direct_chat_digest_answer(config: AppConfig, question: str, llm_client: Any | None = None) -> AskResponse | None:
+    """'Summarize the X chat(s)' requests go to the catch-up machinery, which
+    digests whole message windows; evidence-QA excerpt caps would shred them.
+    Falls through to normal QA when nothing matches a chat title."""
+    from .catchup import CatchupError, catchup_summary, format_catchup_result, parse_chat_digest_request
+
+    chat_query = parse_chat_digest_request(question)
+    if not chat_query:
+        return None
+    try:
+        result = catchup_summary(config, chat_query, llm_client)
+    except CatchupError:
+        return None
+
+    return AskResponse(
+        question=question,
+        answer=format_catchup_result(result),
+        evidence=[],
+        retrieval=_empty_retrieval(question),
+        plan=_direct_plan(question, answer_kind="summary"),
+        used_sources=["archive"],
+        answer_path="model" if result.message_count else "direct",
+    )
+
+
 def _format_control_context(
     control_turns: list[dict[str, Any]] | None = None,
     memory_state: dict[str, Any] | None = None,
@@ -1301,6 +1326,11 @@ def ask_archive(
     direct = _direct_memo_answer(config, question, llm_client)
     if direct is not None:
         trace_event("memo.direct_answer", {"question": question, "answer_path": direct.answer_path})
+        return direct
+
+    direct = _direct_chat_digest_answer(config, question, llm_client)
+    if direct is not None:
+        trace_event("digest.direct_answer", {"question": question, "answer_path": direct.answer_path})
         return direct
 
     control_context = _format_control_context(control_turns, memory_state)

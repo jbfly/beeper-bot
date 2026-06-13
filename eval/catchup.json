@@ -67,6 +67,22 @@
       "answer_contains_count": 2
     },
     {
+      "id": "multi_chat_digest_misspelled_group",
+      "question": "Catch me up on all the bom successo chats.",
+      "mode": "catchup",
+      "catchup_chat_query": "bom successo",
+      "catchup_since_sort_key": 443000,
+      "tags": ["catchup", "multi-chat", "fuzzy"],
+      "notes": "Misspelled group query ('successo') must fuzzy-resolve to every Bom Sucesso chat and produce one digest with per-chat content.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "model",
+      "answer_contains_pool": ["golf", "NOS", "Starlink", "flood", "water", "AGM", "repair", "club"],
+      "answer_contains_count": 3
+    },
+    {
       "id": "catchup_no_new_messages",
       "question": "Catch me up on Fellow Owners again.",
       "mode": "catchup",
