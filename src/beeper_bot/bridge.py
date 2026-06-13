@@ -44,6 +44,103 @@ MD_INLINE_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 MD_BULLET_RE = re.compile(r"^(\s*)[*•-]\s+")
 
 
+CONTINUATION_MARKER_ROOM = 12
+TRUNCATION_NOTE = "\n[truncated]"
+
+
+def _wrap_words(line: str, limit: int) -> list[str]:
+    """Split one over-long line on spaces, hard-splitting any single token
+    (e.g. a giant URL) that still exceeds the limit."""
+    chunks: list[str] = []
+    current = ""
+    for word in line.split(" "):
+        candidate = word if not current else f"{current} {word}"
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+            current = ""
+        while len(word) > limit:
+            chunks.append(word[:limit])
+            word = word[limit:]
+        current = word
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _wrap_segment(segment: str, limit: int) -> list[str]:
+    """Split one over-long paragraph, preferring line then word boundaries."""
+    chunks: list[str] = []
+    current = ""
+    for line in segment.split("\n"):
+        candidate = line if not current else f"{current}\n{line}"
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+            current = ""
+        if len(line) <= limit:
+            current = line
+            continue
+        chunks.extend(_wrap_words(line, limit))
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def split_message(text: str, limit: int, max_parts: int = 6) -> list[str]:
+    """Split a reply into <=limit-char messages at natural boundaries.
+
+    Prefers blank-line (paragraph) breaks, then lines, then words, then a
+    hard character split. Parts beyond max_parts are dropped and a
+    truncation note is added. When more than one part results, each gets an
+    '(i/n)' continuation marker.
+    """
+    text = text.rstrip()
+    if not text:
+        return []
+    if len(text) <= limit:
+        return [text]
+
+    effective = max(1, limit - CONTINUATION_MARKER_ROOM)
+    parts: list[str] = []
+    current = ""
+
+    def flush() -> None:
+        nonlocal current
+        if current.strip():
+            parts.append(current.rstrip())
+        current = ""
+
+    for block in re.split(r"\n\s*\n", text):
+        block = block.rstrip()
+        if not block:
+            continue
+        candidate = block if not current else f"{current}\n\n{block}"
+        if len(candidate) <= effective:
+            current = candidate
+            continue
+        flush()
+        if len(block) <= effective:
+            current = block
+            continue
+        parts.extend(_wrap_segment(block, effective))
+    flush()
+
+    if len(parts) > max_parts:
+        parts = parts[:max_parts]
+        keep = max(1, effective - len(TRUNCATION_NOTE))
+        parts[-1] = parts[-1][:keep].rstrip() + TRUNCATION_NOTE
+
+    total = len(parts)
+    if total > 1:
+        parts = [f"{part}\n({idx}/{total})" for idx, part in enumerate(parts, 1)]
+    return parts
+
+
 def format_reply_for_chat(text: str) -> str:
     """Convert model markdown into something readable in a plain-text chat:
     emoji section headers, '•' bullets, real blank lines between sections."""
@@ -261,14 +358,11 @@ class ControlBridge:
 
     def _reply(self, text: str) -> str:
         text = format_reply_for_chat(text)
-        limit = self.config.bridge.max_reply_chars
-        if len(text) > limit:
-            payload = text[: limit - 14].rstrip() + "\n[truncated]"
-        else:
-            payload = text.rstrip()
-        self.api_client.send_message(self.control_chat_id, payload)
-        log(f"reply sent chars={len(payload)}")
-        return payload
+        parts = split_message(text, self.config.bridge.max_reply_chars, self.config.bridge.max_reply_parts)
+        for part in parts:
+            self.api_client.send_message(self.control_chat_id, part)
+        log(f"reply sent parts={len(parts)} chars={sum(len(p) for p in parts)}")
+        return text
 
     def _handle_command(self, command: RemoteCommand) -> str | None:
         if command.mode == "ignore":

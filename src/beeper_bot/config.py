@@ -58,6 +58,7 @@ class LlmConfig:
 class BridgeConfig:
     reply_prefix: str = DEFAULT_REPLY_PREFIX
     max_reply_chars: int = 3500
+    max_reply_parts: int = 6
     send_ack: bool = True
 
 
@@ -196,6 +197,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         bridge=BridgeConfig(
             reply_prefix=str(bridge_raw.get("reply_prefix", DEFAULT_REPLY_PREFIX)),
             max_reply_chars=_int_value(bridge_raw, "max_reply_chars", 3500),
+            max_reply_parts=_int_value(bridge_raw, "max_reply_parts", 6),
             send_ack=_bool_value(bridge_raw, "send_ack", True),
         ),
         media=MediaConfig(

@@ -208,6 +208,60 @@ class BridgeTest(unittest.TestCase):
         plain = "Adriana sent Rua Afonso enes n°17 R/c [1].\n\nSources:\n[1] Housekeeping — Adriana — 2026-04-19"
         self.assertEqual(format_reply_for_chat(plain), plain)
 
+    def test_split_message_short_text_is_single_part(self) -> None:
+        from beeper_bot.bridge import split_message
+
+        self.assertEqual(split_message("just a short answer", 100), ["just a short answer"])
+
+    def test_split_message_breaks_on_paragraphs_with_markers(self) -> None:
+        from beeper_bot.bridge import split_message
+
+        text = "\n\n".join(f"Paragraph {i} " + "x" * 40 for i in range(6))
+        parts = split_message(text, 120, max_parts=6)
+        self.assertGreater(len(parts), 1)
+        for idx, part in enumerate(parts, 1):
+            self.assertTrue(part.endswith(f"({idx}/{len(parts)})"))
+            self.assertLessEqual(len(part), 120)
+        # no paragraph was cut mid-block: every part begins at a paragraph
+        for part in parts:
+            self.assertTrue(part.lstrip().startswith("Paragraph"))
+
+    def test_split_message_hard_splits_giant_token(self) -> None:
+        from beeper_bot.bridge import split_message
+
+        text = "x" * 500
+        parts = split_message(text, 100, max_parts=10)
+        self.assertTrue(all(len(p) <= 100 for p in parts))
+        self.assertEqual("".join(p.split("\n(")[0] for p in parts), text)
+
+    def test_split_message_caps_parts_and_marks_truncation(self) -> None:
+        from beeper_bot.bridge import split_message
+
+        text = "\n\n".join(f"Block {i} " + "y" * 60 for i in range(20))
+        parts = split_message(text, 100, max_parts=3)
+        self.assertEqual(len(parts), 3)
+        self.assertIn("[truncated]", parts[-1])
+
+    def test_reply_sends_multiple_messages_in_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = load_config(self._write_config(tmpdir))
+            config.bridge.max_reply_chars = 80
+            config.bridge.max_reply_parts = 5
+            client = FakeBeeperClient(
+                chats={"control-chat": {"title": "Control"}, "indexed-chat": {"title": "Indexed"}},
+                messages={"control-chat": [], "indexed-chat": []},
+            )
+            bridge = ControlBridge(config, api_client=client)
+            long_text = "\n\n".join(f"Topic {i} " + "z" * 50 for i in range(4))
+            returned = bridge._reply(long_text)
+            self.assertGreater(len(client.sent_messages), 1)
+            # parts are sent to the control chat, in order, each within the cap
+            self.assertTrue(all(cid == "control-chat" for cid, _ in client.sent_messages))
+            self.assertTrue(all(len(text) <= 80 for _, text in client.sent_messages))
+            self.assertTrue(client.sent_messages[0][1].endswith(f"(1/{len(client.sent_messages)})"))
+            # returned value (for control-memory) is the clean text, no markers
+            self.assertNotIn("(1/", returned)
+
     def test_confirmation_tolerates_punctuation_and_casing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = load_config(self._write_config(tmpdir))
