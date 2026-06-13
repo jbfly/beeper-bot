@@ -180,6 +180,34 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(result.replied_messages, 1)
             self.assertIn("Saved alias: Addy → Adrienne Peña.", client.sent_messages[-1][1])
 
+    def test_format_reply_for_chat_converts_markdown(self) -> None:
+        from beeper_bot.bridge import format_reply_for_chat
+
+        raw = (
+            "## Fellow Owners\n"
+            "**Clubhouse Issues**\n"
+            "*   **Wine Dinner:** Wilhelmina reported noise.\n"
+            "- Second point here.\n"
+            "\n\n\n"
+            "Plain paragraph stays."
+        )
+        formatted = format_reply_for_chat(raw)
+        self.assertIn("🔹 Fellow Owners", formatted)
+        self.assertIn("🔹 Clubhouse Issues", formatted)
+        self.assertIn("• Wine Dinner: Wilhelmina reported noise.", formatted)
+        self.assertIn("• Second point here.", formatted)
+        self.assertNotIn("**", formatted)
+        self.assertNotIn("##", formatted)
+        self.assertNotIn("\n\n\n", formatted)
+        # headers get breathing room
+        self.assertIn("\n\n🔹 Clubhouse Issues", formatted)
+
+    def test_format_reply_keeps_plain_text_unchanged(self) -> None:
+        from beeper_bot.bridge import format_reply_for_chat
+
+        plain = "Adriana sent Rua Afonso enes n°17 R/c [1].\n\nSources:\n[1] Housekeeping — Adriana — 2026-04-19"
+        self.assertEqual(format_reply_for_chat(plain), plain)
+
     def test_confirmation_tolerates_punctuation_and_casing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = load_config(self._write_config(tmpdir))

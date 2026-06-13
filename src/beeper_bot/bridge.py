@@ -38,6 +38,32 @@ CONTROL_CURSOR_KEY = "control_chat_last_seen_sort_key"
 DEFAULT_STALE_SECONDS = 30
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 
+MD_HEADER_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$")
+MD_FULL_BOLD_RE = re.compile(r"^\s*\*\*(.+?)\*\*:?\s*$")
+MD_INLINE_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+MD_BULLET_RE = re.compile(r"^(\s*)[*•-]\s+")
+
+
+def format_reply_for_chat(text: str) -> str:
+    """Convert model markdown into something readable in a plain-text chat:
+    emoji section headers, '•' bullets, real blank lines between sections."""
+    out: list[str] = []
+    for line in text.splitlines():
+        header = MD_HEADER_RE.match(line)
+        if header is None:
+            header = MD_FULL_BOLD_RE.match(line)
+        if header:
+            if out and out[-1].strip():
+                out.append("")
+            out.append(f"🔹 {header.group(1).strip()}")
+            continue
+        line = MD_BULLET_RE.sub(lambda m: f"{m.group(1)}• ", line)
+        line = MD_INLINE_BOLD_RE.sub(r"\1", line)
+        out.append(line)
+    result = "\n".join(out)
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return result.strip()
+
 
 class BridgeApiClient(Protocol):
     def fetch_chat(self, chat_id: str) -> dict: ...
@@ -234,6 +260,7 @@ class ControlBridge:
         )
 
     def _reply(self, text: str) -> str:
+        text = format_reply_for_chat(text)
         limit = self.config.bridge.max_reply_chars
         if len(text) > limit:
             payload = text[: limit - 14].rstrip() + "\n[truncated]"

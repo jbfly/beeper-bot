@@ -442,6 +442,8 @@ def summarize_transcript(config: AppConfig, memo: dict[str, Any], llm_client: An
         f"Summarize this voice memo for the person catching up on it.\n"
         "Cover the main points and any requests, plans, times, or names mentioned.\n"
         "Keep it short. Do not invent content that is not in the transcript.\n"
+        "Format for a plain-text chat app, not markdown: no #, *, or ** symbols; "
+        "use '• ' for bullets and blank lines between points.\n"
         "Do not output chain-of-thought. Return only the summary.\n\n"
         f"{format_memo_header(memo)}\n\n"
         f"Transcript:\n{memo['transcript']}"
