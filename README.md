@@ -27,7 +27,11 @@ transcribed/described by the local model in bounded chunks, and indexed
 into FTS so `/ask`, `/find`, and `/catchup` see them like any other
 message.
 
-See:
+**New here? Read [`AGENTS.md`](AGENTS.md) first** — it is the authoritative
+current-state map (architecture, data model, ask pipeline, config & command
+reference, how to run tests, operational state). The `docs/` files below are
+deeper design notes and history:
+
 - `docs/technical-plan.md`
 - `docs/implementation-plan.md`
 - `docs/control-chat-memory-and-eval-plan.md`
