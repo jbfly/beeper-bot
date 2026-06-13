@@ -1314,11 +1314,11 @@ def ask_archive(
     resolved_people = graph.find_people(plan.people)
     preferred_senders = list(dict.fromkeys(plan.preferred_senders + [p.canonical_name for p in resolved_people]))
     preferred_chats = list(dict.fromkeys(plan.preferred_chats + [chat_id for p in resolved_people for chat_id in p.chat_ids]))
-    restrict_senders, restrict_chats = _infer_retrieval_constraints(question, resolved_people)
+    restrict_senders, restrict_chats = _infer_retrieval_constraints(effective_question, resolved_people)
     if not restrict_senders and len(preferred_senders) == 1:
         sender_name = preferred_senders[0].strip()
         first_token = sender_name.casefold().split()[0] if sender_name else ""
-        if first_token and first_token in question.casefold() and ("address" in question.casefold() or any(verb in question.casefold() for verb in SPEAKER_VERBS)):
+        if first_token and first_token in effective_question.casefold() and ("address" in effective_question.casefold() or any(verb in effective_question.casefold() for verb in SPEAKER_VERBS)):
             # Hard-restricting to a sender the archive has never seen (the
             # planner can invent ones like "the Rooiels host") guarantees
             # zero results; only restrict to real senders.

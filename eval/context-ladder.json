@@ -42,7 +42,7 @@
         "pronoun",
         "summary"
       ],
-      "notes": "Medium rung. The recent window is cluttered, so the model should rely on recent turns plus a short control summary.",
+      "notes": "Medium rung. Detour turns add clutter but introduce no competing 'she'; the pronoun must stay resolvable to Adriana under pressure.",
       "enabled": true,
       "score_case": true,
       "control_turns": [
@@ -56,28 +56,27 @@
         },
         {
           "role": "user",
-          "content": "Okay. Also remind me who sent the Pensão Amor address."
+          "content": "What was the proof-of-payment email on the Rooiels thread?"
         },
         {
           "role": "assistant",
-          "content": "Anna forwarded Rua do Alecrim n. 28C 1.ºDto 1200-018 Lisboa [1]."
+          "content": "The payment email was on the Rooiels thread [1]."
         },
         {
           "role": "user",
-          "content": "And what store thing did Anna ask for?"
+          "content": "Which app did they use for the alarm?"
         },
         {
           "role": "assistant",
-          "content": "She asked someone to stop by the store for her [1]."
+          "content": "They mentioned Olarm [1]."
         }
       ],
       "memory_state": {
-        "control_summary": "We already answered Adriana's address, then switched to the Pensão Amor forwarding chain and Anna's store request."
+        "control_summary": "Earlier we resolved Adriana's address question; later turns covered the Rooiels payment email and the Olarm alarm app."
       },
       "expected_sources": [
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "medium",
       "answer_contains_any": [
@@ -94,7 +93,7 @@
         "pronoun",
         "long"
       ],
-      "notes": "Long rung. The answer should remain Adriana's address despite several detours and a compressed summary.",
+      "notes": "Long rung. More detours (Rooiels, Olarm, Tom's automation site, the store list) but still exactly one 'she' thread.",
       "enabled": true,
       "score_case": true,
       "control_turns": [
@@ -124,28 +123,27 @@
         },
         {
           "role": "user",
-          "content": "And who sent the Pensão Amor address?"
+          "content": "What site did Tom say he set up?"
         },
         {
           "role": "assistant",
-          "content": "Anna forwarded it [1]."
+          "content": "Tom set up https://automations.home.tomanna.uk/ [1]."
         },
         {
           "role": "user",
-          "content": "What store thing did Anna ask for?"
+          "content": "And what was on the store list Tom mentioned?"
         },
         {
           "role": "assistant",
-          "content": "She asked someone to stop by the store [1]."
+          "content": "Bottom sheets and a couple of grocery items [1]."
         }
       ],
       "memory_state": {
-        "control_summary": "Earlier in the thread we resolved Adriana's address. Later turns covered Rooiels, Olarm, Pensão Amor, and Anna's store request."
+        "control_summary": "Earlier in the thread we resolved Adriana's address. Later turns covered Rooiels, Olarm, Tom's automation site, and the store list."
       },
       "expected_sources": [
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "long",
       "answer_contains_any": [
@@ -171,8 +169,7 @@
       },
       "expected_sources": [
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "stress",
       "answer_contains_any": [
@@ -262,8 +259,7 @@
       },
       "expected_sources": [
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "medium",
       "answer_contains_any": [
@@ -329,8 +325,7 @@
       },
       "expected_sources": [
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "long",
       "answer_contains_any": [
@@ -355,8 +350,7 @@
       },
       "expected_sources": [
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "stress",
       "answer_contains_any": [
@@ -452,8 +446,7 @@
       "expected_sources": [
         "memory",
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "medium",
       "answer_contains_any": [
@@ -528,8 +521,7 @@
       "expected_sources": [
         "memory",
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "long",
       "answer_contains_any": [
@@ -571,8 +563,7 @@
       "expected_sources": [
         "memory",
         "archive",
-        "control-turns",
-        "summary"
+        "control-turns"
       ],
       "context_budget_class": "stress",
       "answer_contains_any": [

@@ -29,6 +29,10 @@ The control chat should support three kinds of memory:
 2. rolling summaries
    - compress older control-chat turns into short state notes
    - preserve goals, open threads, pending corrections, and user preferences
+   - implemented 2026-06-13: `maybe_refresh_control_summary` folds turns
+     older than the 8-turn verbatim window into a ≤120-word LLM-maintained
+     summary (refresh every 6 accumulated old turns, cursor in
+     `runtime_state`), run by the bridge after replied exchanges
 
 3. structured memory
    - people
@@ -117,6 +121,15 @@ Rules:
   rewritten or the code generalized
 - each model-scored behavior needs held-out paraphrase variants so a regex
   shim cannot quietly satisfy the suite
+- source-class expectations must be verifiable: archive use shows up as a
+  valid citation, control-turn and memory use as content overlap with the
+  fixture. "summary" was dropped as an expected source (2026-06-13) — a
+  concise correct answer needn't echo the rolling summary's wording, so
+  token-overlap inference punished exactly the right behavior
+- ladder rungs must keep the intent resolvable at every rung: pressure
+  comes from clutter, never from introducing a competing referent. Genuine
+  ambiguity is its own behavior (surface candidates or ask) and gets its
+  own case (`pronoun_ambiguous_lists_candidates`), not a ladder rung
 
 Status note: the first-pass control-memory and ladder results predated these
 rules and were scored against deterministic shortcut paths. After the

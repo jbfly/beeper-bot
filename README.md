@@ -66,18 +66,22 @@ verified identical across two consecutive runs):
 - `core`: `20/20` scored passed
 - `slice`: `14/14` scored passed
 - `control-routing`: `3/3` passed (deterministic product routing, no LLM)
-- `control-memory`: `8/8` scored passed through the model path
+- `control-memory`: `9/9` scored passed through the model path (includes
+  an ambiguous-pronoun case that rewards surfacing both candidates)
 - `catchup`: `5/5` scored passed (real Bom Sucesso group-chat digests)
-- `context-ladder`: `3/9` scored passed — families degrade at the medium
-  rung; this is the honest context-pressure frontier, not a regression
-  (the historical `9/9` was scored against deterministic shims)
+- `media`: `3/3` scored passed (voice-memo transcript/summary lookup)
+- `context-ladder`: `9/9` scored passed across all rungs, after fixing two
+  suite-validity defects (an unverifiable "summary" source expectation,
+  and pronoun rungs whose distractors introduced a competing referent) and
+  one retrieval fix (sender restriction now keys off the planner-resolved
+  question)
 
 The porter-stemming migration (schema v5) closed the `owe`/`owes`
-morphology gap that capped starter and core for weeks. Full run outputs:
-`state/eval-12b/`. The 26B (`ai-model gemma4`) remains available; it is
-~2x faster per case (4B-active MoE) and one ladder rung stronger, but has
-no audio path. Single-case run-to-run flips can still occur from
-llama-server KV-cache reuse; see
-`docs/control-chat-memory-and-eval-plan.md` §4.3.1.
+morphology gap that capped starter and core for weeks. The control chat
+also maintains a real LLM-refreshed rolling summary of older turns
+(`maybe_refresh_control_summary`). The 26B (`ai-model gemma4`) remains
+available; it is ~2x faster per case (4B-active MoE) but has no audio
+path. Single-case run-to-run flips can still occur from llama-server
+KV-cache reuse; see `docs/control-chat-memory-and-eval-plan.md` §4.3.1.
 
 Use `--deterministic` for comparison runs. That pins answer and planner temperatures to `0.0` unless explicitly overridden.

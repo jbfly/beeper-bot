@@ -165,6 +165,31 @@
       "answer_contains_any": ["Adrienne", "girlfriend"]
     },
     {
+      "id": "pronoun_ambiguous_lists_candidates",
+      "question": "What address did she send?",
+      "tags": ["control-memory", "continuity", "ambiguity"],
+      "notes": "Two recent women sent addresses, so 'she' is genuinely ambiguous. The right behavior is to surface both candidates (or ask which), never to silently pick one.",
+      "enabled": true,
+      "score_case": true,
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_path": "model",
+      "control_turns": [
+        {"role": "user", "content": "What address did Adriana send?"},
+        {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."},
+        {"role": "user", "content": "Okay. Also remind me who sent the Pensão Amor address."},
+        {"role": "assistant", "content": "Anna forwarded Rua do Alecrim n. 28C 1.ºDto 1200-018 Lisboa [1]."},
+        {"role": "user", "content": "And what store thing did Anna ask for?"},
+        {"role": "assistant", "content": "She asked someone to stop by the store for her [1]."}
+      ],
+      "memory_state": {
+        "control_summary": "We already answered Adriana's address, then switched to the Pensão Amor forwarding chain and Anna's store request."
+      },
+      "context_budget_class": "",
+      "answer_contains_pool": ["Rua Afonso", "Rua do Alecrim", "which"],
+      "answer_contains_count": 2
+    },
+    {
       "id": "mixed_source_paraphrase",
       "question": "Remind me who Addy is, and what address did she send?",
       "tags": ["control-memory", "mixed-source", "paraphrase"],

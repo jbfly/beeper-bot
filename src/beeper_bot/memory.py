@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from .config import AppConfig
-from .db import get_runtime_state, open_db, utc_now
+from .db import get_runtime_state, open_db, set_runtime_state, utc_now
 from .people import add_person_alias, load_person_graph, upsert_person
 
 
@@ -102,6 +102,87 @@ def _build_control_summary_from_turns(turns: list[dict[str, str]]) -> str:
             break
     topics.reverse()
     return "Recent control topics: " + " | ".join(topics)
+
+
+CONTROL_SUMMARY_KEY = "control_summary"
+CONTROL_SUMMARY_UPTO_KEY = "control_summary_upto_turn"
+SUMMARY_KEEP_RECENT_TURNS = 8
+SUMMARY_REFRESH_BATCH = 6
+SUMMARY_MAX_WORDS = 120
+
+
+def build_summary_refresh_prompt(previous_summary: str, turns: list[dict[str, str]]) -> str:
+    lines = [f"- {item['role']}: {' '.join(item['content'].split())[:240]}" for item in turns]
+    previous_block = previous_summary.strip() or "(none yet)"
+    return (
+        "Update the running summary of the user's control-chat session.\n"
+        f"Keep it under {SUMMARY_MAX_WORDS} words of plain prose.\n"
+        "Preserve: active goals, open threads, what was already asked and answered "
+        "(so later follow-ups can be resolved), named people and what they sent or asked for, "
+        "corrections, and user preferences.\n"
+        "Drop greetings and chit-chat. Do not invent content.\n"
+        "Do not output chain-of-thought. Return only the updated summary.\n\n"
+        f"Previous summary:\n{previous_block}\n\n"
+        f"New turns to fold in:\n" + "\n".join(lines)
+    )
+
+
+def _summarize_control_turns(config: AppConfig, prompt: str, llm_client) -> str:
+    if llm_client is not None and hasattr(llm_client, "summarize_text"):
+        return str(llm_client.summarize_text(config, prompt))
+    from .llm import OpenAiCompatLlmClient
+
+    client = llm_client if isinstance(llm_client, OpenAiCompatLlmClient) else OpenAiCompatLlmClient()
+    return client._post_chat(
+        config,
+        [
+            {"role": "system", "content": "Maintain running conversation summaries faithfully. No hidden reasoning."},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=250,
+        trace_phase="control.summary",
+    )
+
+
+def maybe_refresh_control_summary(config: AppConfig, llm_client=None, *, force: bool = False) -> str | None:
+    """Fold control turns older than the verbatim window into the rolling
+    summary. Returns the new summary when a refresh happened, else None.
+
+    The most recent SUMMARY_KEEP_RECENT_TURNS turns stay out of the summary
+    (they are sent verbatim in prompts); a refresh runs once at least
+    SUMMARY_REFRESH_BATCH older turns have accumulated past the last fold.
+    """
+    with open_db(config.archive.path) as conn:
+        row = conn.execute("SELECT MAX(turn_id) AS latest FROM control_turns").fetchone()
+        latest = int(row["latest"] or 0)
+        upto = int(get_runtime_state(conn, CONTROL_SUMMARY_UPTO_KEY) or 0)
+        cutoff = latest - SUMMARY_KEEP_RECENT_TURNS
+        if cutoff <= upto or (not force and cutoff - upto < SUMMARY_REFRESH_BATCH):
+            return None
+        turn_rows = conn.execute(
+            """
+            SELECT role, content FROM control_turns
+            WHERE turn_id > ? AND turn_id <= ?
+            ORDER BY turn_id ASC
+            """,
+            (upto, cutoff),
+        ).fetchall()
+        previous = get_runtime_state(conn, CONTROL_SUMMARY_KEY) or ""
+    turns = [{"role": str(r["role"]), "content": str(r["content"])} for r in turn_rows if str(r["content"]).strip()]
+    if not turns:
+        return None
+
+    prompt = build_summary_refresh_prompt(previous, turns)
+    summary = _summarize_control_turns(config, prompt, llm_client).strip()
+    if not summary:
+        return None
+    from .tracing import trace_event
+
+    trace_event("control.summary.refresh", {"folded_turns": len(turns), "upto_turn": cutoff, "summary": summary})
+    with open_db(config.archive.path) as conn:
+        set_runtime_state(conn, CONTROL_SUMMARY_KEY, summary)
+        set_runtime_state(conn, CONTROL_SUMMARY_UPTO_KEY, str(cutoff))
+    return summary
 
 
 def load_memory_state(config: AppConfig) -> dict:

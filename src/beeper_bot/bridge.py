@@ -20,6 +20,7 @@ from .memory import (
     load_memory_state,
     looks_like_confirmation,
     looks_like_rejection,
+    maybe_refresh_control_summary,
     queue_proposed_action,
     recent_control_turns,
     record_control_turn,
@@ -373,6 +374,14 @@ class ControlBridge:
             finally:
                 self.busy = False
                 self._store_cursor(sort_key)
+
+        if replied:
+            try:
+                summary = maybe_refresh_control_summary(self.config)
+                if summary:
+                    log(f"control summary refreshed chars={len(summary)}")
+            except Exception as exc:
+                log(f"control summary refresh failed: {exc}")
 
         return BridgeLoopResult(processed, replied, busy_messages)
 
