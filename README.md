@@ -50,7 +50,7 @@ base_url = "http://127.0.0.1:8090/v1"
 model = "gemma4-google-12b-q6_k-local"
 ```
 
-That proxy starts `llama-server` on demand and unloads it when idle. See `~/git/ai-ops/docs/llama-arbiter.md`.
+That proxy starts `llama-server` on demand and unloads it when idle. Any OpenAI-compatible local endpoint works here.
 
 ## Benchmarking
 
