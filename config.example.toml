@@ -1,0 +1,44 @@
+[beeper]
+# Enable Beeper Desktop API, then paste its token into this file path.
+api_base = "http://127.0.0.1:23373/v1"
+token_file = "~/.config/beeper-bot/token"
+control_chat_id = ""
+indexed_chat_ids = []
+auto_index_recent_days = 0
+auto_index_max_chats = 100
+poll_seconds = 5
+sync_interval_seconds = 300
+history_fetch_limit = 500
+history_backfill_pages = 20
+http_timeout_seconds = 30
+
+[archive]
+path = "~/.local/state/beeper-bot/archive.sqlite3"
+
+[llm]
+base_url = "http://127.0.0.1:8090/v1"
+model = "gemma"
+max_input_snippets = 10
+max_output_tokens = 300
+temperature = 0.1
+
+[bridge]
+reply_prefix = "[BEEPER-BOT] "
+max_reply_chars = 3500
+max_reply_parts = 6
+send_ack = true
+
+[media]
+exclude_chat_ids = []
+auto_derive = true
+auto_derive_per_cycle = 3
+
+# Optional curated multi-chat digest sets. Values may be chat ids or title fragments.
+# [chat_sets.neighborhood]
+# display_name = "Neighborhood"
+# aliases = ["neighborhood", "neighbors"]
+# chats = ["Neighborhood Planning", "Building Updates"]
+
+[security]
+allow_web_search = false
+log_raw_messages = false

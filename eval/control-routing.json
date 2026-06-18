@@ -1,0 +1,24 @@
+{
+  "name": "control-routing",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
+  "cases": [
+    {
+      "id": "alias_write_synthetic",
+      "question": "Remember that Sunny is Sam Rivera.",
+      "tags": [
+        "synthetic",
+        "alias"
+      ],
+      "expected_path": "direct",
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_actions": [
+        "confirm-memory-write"
+      ],
+      "answer_contains_any": [
+        "Sunny",
+        "Sam Rivera"
+      ]
+    }
+  ]
+}

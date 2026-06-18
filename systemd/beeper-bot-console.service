@@ -1,0 +1,14 @@
+[Unit]
+Description=beeper-bot operator console
+After=network.target beeper-bot.service
+PartOf=beeper-bot.service
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/bin/beeper-bot --config %h/.config/beeper-bot/config.toml console --host 127.0.0.1 --port 8777 --sample-seconds 2
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

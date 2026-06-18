@@ -1,0 +1,40 @@
+{
+  "name": "context-ladder",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
+  "cases": [
+    {
+      "id": "followup_synthetic_short",
+      "question": "What address did he send?",
+      "tags": [
+        "synthetic",
+        "followup"
+      ],
+      "control_turns": [
+        {
+          "role": "user",
+          "content": "What did Seth send?"
+        },
+        {
+          "role": "assistant",
+          "content": "Seth sent 123 Sample St [1]."
+        }
+      ],
+      "answer_contains_any": [
+        "123 Sample St"
+      ],
+      "evidence_sender_any": [
+        "Seth"
+      ],
+      "evidence_chat_any": [
+        "Family logistics"
+      ],
+      "plan_preferred_sender_any": [
+        "Seth"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ],
+      "context_budget_class": "short"
+    }
+  ]
+}

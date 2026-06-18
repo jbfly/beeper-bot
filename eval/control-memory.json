@@ -1,0 +1,33 @@
+{
+  "name": "control-memory",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
+  "cases": [
+    {
+      "id": "memory_sam_neighbor",
+      "question": "Who is Sam again?",
+      "tags": [
+        "synthetic",
+        "memory"
+      ],
+      "expected_path": "direct",
+      "min_evidence": 0,
+      "require_citation": false,
+      "answer_contains_any": [
+        "neighbor"
+      ],
+      "expected_sources": [
+        "memory"
+      ],
+      "memory_state": {
+        "facts": [
+          {
+            "subject": "Sam",
+            "predicate": "relationship_to_user",
+            "object": "neighbor",
+            "source": "user-approved fact"
+          }
+        ]
+      }
+    }
+  ]
+}

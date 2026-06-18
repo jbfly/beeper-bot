@@ -1,0 +1,91 @@
+{
+  "name": "core",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
+  "cases": [
+    {
+      "id": "seth_address",
+      "question": "What address did Seth send?",
+      "tags": [
+        "synthetic",
+        "address",
+        "fact"
+      ],
+      "answer_contains_any": [
+        "123 Sample St"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Seth"
+      ],
+      "evidence_chat_any": [
+        "Family logistics"
+      ],
+      "plan_preferred_sender_any": [
+        "Seth"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ],
+      "plan_time_hint_any": [
+        "any"
+      ]
+    },
+    {
+      "id": "julie_meeting_time",
+      "question": "When did Julie say to meet?",
+      "tags": [
+        "synthetic",
+        "time",
+        "fact"
+      ],
+      "answer_contains_any": [
+        "5pm",
+        "5 pm"
+      ],
+      "answer_not_contains": [
+        "insufficient"
+      ],
+      "evidence_sender_any": [
+        "Julie"
+      ],
+      "evidence_chat_any": [
+        "Family logistics"
+      ],
+      "plan_preferred_sender_any": [
+        "Julie"
+      ],
+      "plan_answer_kind_any": [
+        "fact"
+      ]
+    },
+    {
+      "id": "sam_alias_memory",
+      "question": "Who is Sam again?",
+      "tags": [
+        "synthetic",
+        "memory"
+      ],
+      "expected_path": "direct",
+      "min_evidence": 0,
+      "require_citation": false,
+      "answer_contains_any": [
+        "neighbor"
+      ],
+      "expected_sources": [
+        "memory"
+      ],
+      "memory_state": {
+        "facts": [
+          {
+            "subject": "Sam",
+            "predicate": "relationship_to_user",
+            "object": "neighbor",
+            "source": "user-approved fact"
+          }
+        ]
+      }
+    }
+  ]
+}

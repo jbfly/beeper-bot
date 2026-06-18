@@ -1,0 +1,253 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sqlite3
+import unicodedata
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from .beeper_api import MessagePage
+from .config import AppConfig
+from .db import get_runtime_state, init_db_path, open_db, set_runtime_state, utc_now
+
+
+BACKFILL_DONE_KEY_PREFIX = "sync_backfill_done:"
+
+
+class SyncClient(Protocol):
+    def fetch_chat(self, chat_id: str) -> dict[str, Any]: ...
+    def fetch_messages(self, chat_id: str) -> list[dict[str, Any]]: ...
+    def fetch_messages_page(self, chat_id: str, cursor: str | None = None, direction: str | None = None) -> MessagePage: ...
+
+
+@dataclass(slots=True)
+class ChatSyncResult:
+    chat_id: str
+    chat_name: str
+    fetched_messages: int
+    stored_messages: int
+    latest_sort_key: int | None
+
+
+@dataclass(slots=True)
+class SyncResult:
+    chats: list[ChatSyncResult]
+
+    @property
+    def total_fetched_messages(self) -> int:
+        return sum(chat.fetched_messages for chat in self.chats)
+
+    @property
+    def total_stored_messages(self) -> int:
+        return sum(chat.stored_messages for chat in self.chats)
+
+
+def normalize_text(text: str | None) -> str | None:
+    if text is None:
+        return None
+    normalized = unicodedata.normalize("NFKC", str(text))
+    normalized = normalized.replace("\r\n", "\n").replace("\r", "\n").strip()
+    normalized = re.sub(r"[ \t\f\v]+", " ", normalized)
+    return normalized
+
+
+def _message_text(message: dict[str, Any]) -> str | None:
+    text = message.get("text")
+    if text not in (None, ""):
+        return str(text)
+    if message.get("type") == "IMAGE":
+        attachments = message.get("attachments", [])
+        if attachments and isinstance(attachments, list):
+            file_name = attachments[0].get("fileName") if isinstance(attachments[0], dict) else None
+            return f"[image: {file_name or 'attachment'}]"
+    return None
+
+
+def _sort_key(message: dict[str, Any]) -> int | None:
+    value = message.get("sortKey")
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
+def _message_id(chat_id: str, message: dict[str, Any], sort_key: int | None) -> str:
+    for key in ("messageID", "messageId", "id", "eventID", "eventId"):
+        value = message.get(key)
+        if value not in (None, ""):
+            return str(value)
+    if sort_key is not None:
+        return f"{chat_id}:{sort_key}"
+    digest = hashlib.sha256(json.dumps(message, sort_keys=True).encode("utf-8")).hexdigest()
+    return f"{chat_id}:sha256:{digest}"
+
+
+def _chat_name(chat_payload: dict[str, Any], chat_id: str) -> str:
+    for key in ("title", "name", "displayName"):
+        value = chat_payload.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return chat_id
+
+
+def _upsert_chat(conn: sqlite3.Connection, chat_id: str, chat_name: str) -> None:
+    now = utc_now()
+    conn.execute(
+        """
+        INSERT INTO chats(chat_id, name, is_allowed, created_at, updated_at, last_synced_at)
+        VALUES (?, ?, 1, ?, ?, ?)
+        ON CONFLICT(chat_id) DO UPDATE SET
+            name = excluded.name,
+            is_allowed = 1,
+            updated_at = excluded.updated_at,
+            last_synced_at = excluded.last_synced_at
+        """,
+        (chat_id, chat_name, now, now, now),
+    )
+
+
+def _upsert_message(conn: sqlite3.Connection, chat_id: str, chat_name: str, message: dict[str, Any]) -> bool:
+    sort_key = _sort_key(message)
+    if sort_key is None:
+        return False
+    message_id = _message_id(chat_id, message, sort_key)
+    text = _message_text(message)
+    now = utc_now()
+    conn.execute(
+        """
+        INSERT INTO messages(
+            message_id, chat_id, sort_key, timestamp, sender_id, sender_name,
+            is_sender, message_type, text, normalized_text, raw_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(message_id) DO UPDATE SET
+            chat_id = excluded.chat_id,
+            sort_key = excluded.sort_key,
+            timestamp = excluded.timestamp,
+            sender_id = excluded.sender_id,
+            sender_name = excluded.sender_name,
+            is_sender = excluded.is_sender,
+            message_type = excluded.message_type,
+            text = excluded.text,
+            normalized_text = excluded.normalized_text,
+            raw_json = excluded.raw_json,
+            updated_at = excluded.updated_at
+        """,
+        (
+            message_id,
+            chat_id,
+            sort_key,
+            str(message.get("timestamp", "")),
+            str(message.get("senderID", "") or ""),
+            str(message.get("senderName", "") or ""),
+            1 if message.get("isSender") else 0,
+            str(message.get("type", "UNKNOWN")),
+            text,
+            normalize_text(text),
+            json.dumps(message, sort_keys=True),
+            now,
+            now,
+        ),
+    )
+    conn.execute("DELETE FROM message_fts WHERE message_id = ?", (message_id,))
+    if text:
+        conn.execute(
+            """
+            INSERT INTO message_fts(message_id, chat_id, chat_name, sender_name, text)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (message_id, chat_id, chat_name, str(message.get("senderName", "") or ""), text),
+        )
+    # Media messages carry transcript/description text derived after ingest;
+    # the upsert above just overwrote it with the raw payload text, so put it
+    # back.
+    if str(message.get("type", "")) in ("VOICE", "IMAGE", "VIDEO", "FILE"):
+        from .media import reapply_derived_text
+
+        reapply_derived_text(conn, message_id)
+    return True
+
+
+def _backfill_done_key(chat_id: str) -> str:
+    return f"{BACKFILL_DONE_KEY_PREFIX}{chat_id}"
+
+
+def _fetch_sync_pages(config: AppConfig, client: SyncClient, chat_id: str) -> list[dict[str, Any]]:
+    first_page = client.fetch_messages_page(chat_id)
+    all_items = list(first_page.items)
+
+    with open_db(config.archive.path) as conn:
+        backfill_done = get_runtime_state(conn, _backfill_done_key(chat_id)) == "1"
+
+    if backfill_done or not first_page.has_more:
+        return all_items
+
+    cursor = first_page.oldest_cursor
+    pages_left = max(0, int(config.beeper.history_backfill_pages) - 1)
+    while cursor and pages_left > 0:
+        page = client.fetch_messages_page(chat_id, cursor=cursor, direction="before")
+        if not page.items:
+            break
+        all_items.extend(page.items)
+        cursor = page.oldest_cursor
+        pages_left -= 1
+        if not page.has_more:
+            break
+
+    with open_db(config.archive.path) as conn:
+        if cursor is None or pages_left > 0:
+            set_runtime_state(conn, _backfill_done_key(chat_id), "1")
+
+    return all_items
+
+
+def _update_sync_state(conn: sqlite3.Connection, chat_id: str, latest_sort_key: int | None) -> None:
+    now = utc_now()
+    conn.execute(
+        """
+        INSERT INTO sync_state(chat_id, last_seen_sort_key, last_full_sync_at, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(chat_id) DO UPDATE SET
+            last_seen_sort_key = excluded.last_seen_sort_key,
+            last_full_sync_at = excluded.last_full_sync_at,
+            updated_at = excluded.updated_at
+        """,
+        (chat_id, latest_sort_key, now, now),
+    )
+
+
+def sync_chat(config: AppConfig, client: SyncClient, chat_id: str) -> ChatSyncResult:
+    init_db_path(config.archive.path)
+    chat_payload = client.fetch_chat(chat_id)
+    chat_name = _chat_name(chat_payload, chat_id)
+    messages = _fetch_sync_pages(config, client, chat_id)
+    deduped: dict[str, dict[str, Any]] = {}
+    for message in messages:
+        sort_key = _sort_key(message)
+        message_id = _message_id(chat_id, message, sort_key)
+        deduped[message_id] = message
+    ordered = sorted((msg for msg in deduped.values() if _sort_key(msg) is not None), key=lambda msg: int(msg["sortKey"]))
+    latest_sort_key = int(ordered[-1]["sortKey"]) if ordered else None
+
+    stored_messages = 0
+    with open_db(config.archive.path) as conn:
+        conn.execute("BEGIN")
+        _upsert_chat(conn, chat_id, chat_name)
+        for message in ordered:
+            if _upsert_message(conn, chat_id, chat_name, message):
+                stored_messages += 1
+        _update_sync_state(conn, chat_id, latest_sort_key)
+        conn.commit()
+
+    return ChatSyncResult(
+        chat_id=chat_id,
+        chat_name=chat_name,
+        fetched_messages=len(ordered),
+        stored_messages=stored_messages,
+        latest_sort_key=latest_sort_key,
+    )
+
+
+def sync_chats(config: AppConfig, client: SyncClient, chat_ids: list[str] | None = None) -> SyncResult:
+    target_chat_ids = chat_ids or list(config.beeper.indexed_chat_ids)
+    return SyncResult(chats=[sync_chat(config, client, chat_id) for chat_id in target_chat_ids])

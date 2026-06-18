@@ -1,0 +1,13 @@
+[Unit]
+Description=beeper-bot control chat service
+After=network.target
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/bin/beeper-bot --config %h/.config/beeper-bot/config.toml serve
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

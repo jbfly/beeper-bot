@@ -1,0 +1,25 @@
+{
+  "name": "control-memory-diagnostic",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
+  "cases": [
+    {
+      "id": "memory_write_synthetic",
+      "question": "Remember that Sam is my neighbor.",
+      "tags": [
+        "synthetic",
+        "memory-write"
+      ],
+      "expected_path": "direct",
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_actions": [
+        "confirm-memory-write"
+      ],
+      "answer_contains_any": [
+        "confirm",
+        "save",
+        "remember"
+      ]
+    }
+  ]
+}
