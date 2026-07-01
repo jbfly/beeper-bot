@@ -1,16 +1,25 @@
 {
   "name": "control-memory-diagnostic",
-  "description": "Hard or ambiguous control-memory cases tracked without score gating.",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
   "cases": [
     {
-      "id": "ambiguous_memory_write_subject",
-      "question": "Remember that Anna is family.",
-      "tags": ["control-memory", "diagnostic", "memory-write"],
-      "notes": "The bot should not persist vague relationship facts without clarification.",
-      "enabled": false,
-      "score_case": false,
-      "expected_actions": ["ask-clarifying-question"],
-      "context_budget_class": "short"
+      "id": "memory_write_synthetic",
+      "question": "Remember that Sam is my neighbor.",
+      "tags": [
+        "synthetic",
+        "memory-write"
+      ],
+      "expected_path": "direct",
+      "min_evidence": 0,
+      "require_citation": false,
+      "expected_actions": [
+        "confirm-memory-write"
+      ],
+      "answer_contains_any": [
+        "confirm",
+        "save",
+        "remember"
+      ]
     }
   ]
 }

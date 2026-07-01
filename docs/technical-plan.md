@@ -14,7 +14,7 @@ The system must keep private data local by default.
 
 ## 2. Product shape
 
-The bot will live behind one private Beeper control chat.
+The bot lives behind one private Beeper control chat.
 
 Input path:
 - user sends a question in the control chat

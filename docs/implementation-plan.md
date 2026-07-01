@@ -119,7 +119,7 @@ Example:
 ```toml
 [beeper]
 api_base = "http://127.0.0.1:23373/v1"
-credentials_file = "/home/jbfly/.codex/.credentials.json"
+token_file = "~/.config/beeper-bot/token"
 control_chat_id = "<beeper-chat-id>"
 indexed_chat_ids = ["<chat-a>", "<chat-b>"]
 poll_seconds = 5
@@ -128,7 +128,7 @@ history_fetch_limit = 500
 http_timeout_seconds = 30
 
 [archive]
-path = "/home/jbfly/.local/state/beeper-bot/archive.sqlite3"
+path = "~/.local/state/beeper-bot/archive.sqlite3"
 
 [llm]
 base_url = "http://127.0.0.1:8090/v1"

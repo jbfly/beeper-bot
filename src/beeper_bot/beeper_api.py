@@ -47,20 +47,23 @@ class BeeperApiClient:
                 return token
             raise BeeperApiError(f"Beeper token file is empty: {token_path}")
 
+        if not self.config.credentials_file:
+            raise BeeperApiError(f"Beeper token file not found: {token_path}")
+
         credentials_path = Path(self.config.credentials_file)
         try:
             with credentials_path.open() as handle:
                 credentials = json.load(handle)
         except FileNotFoundError as exc:
             raise BeeperApiError(
-                f"Beeper token file not found: {token_path}; legacy credentials file also missing: {credentials_path}"
+                f"Beeper token file not found: {token_path}; configured credentials file also missing: {credentials_path}"
             ) from exc
 
         for value in credentials.values():
             if value.get("server_name") == "beeper" and value.get("access_token"):
                 return str(value["access_token"])
         raise BeeperApiError(
-            f"No Beeper access token found in token file {token_path} or legacy credentials file {credentials_path}"
+            f"No Beeper access token found in token file {token_path} or configured credentials file {credentials_path}"
         )
 
     def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:

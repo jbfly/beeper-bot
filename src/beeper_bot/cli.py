@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     people_list = people_sub.add_parser("list", help="List all known people")
     people_list.add_argument("--json", action="store_true", help="Print machine-readable output")
     people_seed = people_sub.add_parser("seed", help="Create or replace a person entry")
-    people_seed.add_argument("person_id", help="Stable identifier, e.g. adrienne-pena")
+    people_seed.add_argument("person_id", help="Stable identifier, e.g. jordan-lee")
     people_seed.add_argument("canonical_name", help="Full display name")
     people_seed.add_argument("--alias", action="append", dest="aliases", help="Name alias; repeatable")
     people_seed.add_argument("--chat-id", action="append", dest="chat_ids", help="Associated chat ID; repeatable")

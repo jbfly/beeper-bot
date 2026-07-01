@@ -17,7 +17,7 @@ from beeper_bot.memory import (
 
 
 class FakeSummarizer:
-    def __init__(self, summary: str = "Running summary: user asked about addresses; Adriana's was answered."):
+    def __init__(self, summary: str = "Running summary: user asked about addresses; Taylor's was answered."):
         self.summary = summary
         self.prompts: list[str] = []
 

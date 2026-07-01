@@ -146,7 +146,7 @@ Context-ladder stands at 3/9 with families failing at the medium rung;
 that is the open frontier this harness exists to measure. One guard was
 added along the way: the single-sender hard restriction only applies to
 senders that actually exist in the archive, because the planner can invent
-descriptive senders like "the Rooiels host".
+descriptive senders like "the Sample Bay host".
 
 ## 5. New eval classes
 
@@ -169,10 +169,10 @@ Pass condition:
 Test use of durable stored facts.
 
 Examples:
-- Anna is my sister
-- Tom is my brother in law
-- Addy is my girlfriend
-- Addy is an alias for Adrienne Peña
+- Alex is my sister
+- Morgan is my brother in law
+- Jordan is my partner
+- Sunny is an alias for Sam Rivera
 
 Pass condition:
 - the bot uses stored facts when relevant
@@ -224,7 +224,7 @@ The point is not perfect recall of arbitrary long threads. The point is stable b
 For mixed memory questions, verify source use.
 
 Examples:
-- "Who is Addy again, and what address did she send?"
+- "Who is Sunny again, and what address did they send?"
 - relationship should come from structured memory
 - address should come from archive evidence
 

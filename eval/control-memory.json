@@ -1,223 +1,33 @@
 {
   "name": "control-memory",
-  "description": "Model-scored control-chat continuity and structured-memory use. Every case must reach the model (expected_path 'model'); a deterministic shortcut resolution fails the case. Paraphrase variants exist to catch question-literal overfitting in application code.",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
   "cases": [
     {
-      "id": "followup_pronoun_address",
-      "question": "What address did she send?",
-      "tags": ["control-memory", "continuity"],
-      "notes": "Follow-up must resolve 'she' from the retained control-chat window via the planner, not from question-literal heuristics.",
-      "enabled": true,
-      "score_case": true,
-      "expected_path": "model",
-      "control_turns": [
-        {"role": "user", "content": "What address did Adriana send?"},
-        {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."}
+      "id": "memory_sam_neighbor",
+      "question": "Who is Sam again?",
+      "tags": [
+        "synthetic",
+        "memory"
       ],
-      "expected_sources": ["archive", "control-turns"],
-      "context_budget_class": "short",
-      "answer_contains_any": ["Rua Afonso", "Afonso enes"]
-    },
-    {
-      "id": "followup_pronoun_address_paraphrase",
-      "question": "And what was the address she sent again?",
-      "tags": ["control-memory", "continuity", "paraphrase"],
-      "notes": "Held-out paraphrase of followup_pronoun_address. Same intent, different surface form.",
-      "enabled": true,
-      "score_case": true,
-      "expected_path": "model",
-      "control_turns": [
-        {"role": "user", "content": "What address did Adriana send?"},
-        {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."}
-      ],
-      "expected_sources": ["archive", "control-turns"],
-      "context_budget_class": "short",
-      "answer_contains_any": ["Rua Afonso", "Afonso enes"]
-    },
-    {
-      "id": "followup_pronoun_address_reminder",
-      "question": "Can you remind me which address she sent over?",
-      "tags": ["control-memory", "continuity", "paraphrase"],
-      "notes": "Second held-out paraphrase of the pronoun follow-up.",
-      "enabled": true,
-      "score_case": true,
-      "expected_path": "model",
-      "control_turns": [
-        {"role": "user", "content": "What address did Adriana send?"},
-        {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."}
-      ],
-      "expected_sources": ["archive", "control-turns"],
-      "context_budget_class": "short",
-      "answer_contains_any": ["Rua Afonso", "Afonso enes"]
-    },
-    {
-      "id": "relationship_fact_paraphrase",
-      "question": "How is Anna related to me?",
-      "tags": ["control-memory", "structured-memory", "paraphrase"],
-      "notes": "Relationship fact must come from stored memory through the model path; phrased to avoid the canonical 'who is X' routing shape.",
-      "enabled": true,
-      "score_case": true,
+      "expected_path": "direct",
       "min_evidence": 0,
       "require_citation": false,
-      "expected_path": "model",
-      "memory_state": {
-        "facts": [
-          {
-            "subject": "Anna Bonewitz",
-            "predicate": "relationship_to_user",
-            "object": "sister",
-            "source": "user-approved fact"
-          }
-        ]
-      },
-      "expected_sources": ["memory"],
-      "context_budget_class": "short",
-      "answer_contains_any": ["sister"]
-    },
-    {
-      "id": "relationship_fact_verification",
-      "question": "Is Anna my cousin or my sister?",
-      "tags": ["control-memory", "structured-memory", "paraphrase"],
-      "notes": "Model must pick the stored relationship over the wrong alternative offered in the question.",
-      "enabled": true,
-      "score_case": true,
-      "min_evidence": 0,
-      "require_citation": false,
-      "expected_path": "model",
-      "memory_state": {
-        "facts": [
-          {
-            "subject": "Anna Bonewitz",
-            "predicate": "relationship_to_user",
-            "object": "sister",
-            "source": "user-approved fact"
-          }
-        ]
-      },
-      "expected_sources": ["memory"],
-      "context_budget_class": "short",
-      "answer_contains_any": ["sister"]
-    },
-    {
-      "id": "unstored_relationship_refusal",
-      "question": "How is Marcus related to me?",
-      "tags": ["control-memory", "structured-memory", "hallucination"],
-      "notes": "No stored fact about Marcus exists. The model must say it does not have that information rather than inventing a relationship.",
-      "enabled": true,
-      "score_case": true,
-      "min_evidence": 0,
-      "require_citation": false,
-      "expected_path": "model",
-      "memory_state": {
-        "facts": [
-          {
-            "subject": "Anna Bonewitz",
-            "predicate": "relationship_to_user",
-            "object": "sister",
-            "source": "user-approved fact"
-          }
-        ]
-      },
-      "context_budget_class": "short",
       "answer_contains_any": [
-        "don't have",
-        "do not have",
-        "no stored",
-        "not stored",
-        "don't know",
-        "do not know",
-        "could not find",
-        "couldn't find",
-        "unknown",
-        "not have that information",
-        "no information"
+        "neighbor"
       ],
-      "answer_not_contains": ["Marcus is your sister", "Marcus is your brother", "Marcus is your cousin"]
-    },
-    {
-      "id": "alias_identity_use",
-      "question": "Tell me who Addy is.",
-      "tags": ["control-memory", "structured-memory", "paraphrase"],
-      "notes": "Identity and relationship facts must be combined from memory through the model path; phrased to avoid the canonical lookup shape.",
-      "enabled": true,
-      "score_case": true,
-      "min_evidence": 0,
-      "require_citation": false,
-      "expected_path": "model",
+      "expected_sources": [
+        "memory"
+      ],
       "memory_state": {
         "facts": [
           {
-            "subject": "Addy",
-            "predicate": "identity",
-            "object": "Adrienne Peña",
-            "source": "user-approved fact"
-          },
-          {
-            "subject": "Adrienne Peña",
+            "subject": "Sam",
             "predicate": "relationship_to_user",
-            "object": "girlfriend",
+            "object": "neighbor",
             "source": "user-approved fact"
           }
         ]
-      },
-      "expected_sources": ["memory"],
-      "context_budget_class": "short",
-      "answer_contains_any": ["Adrienne", "girlfriend"]
-    },
-    {
-      "id": "pronoun_ambiguous_lists_candidates",
-      "question": "What address did she send?",
-      "tags": ["control-memory", "continuity", "ambiguity"],
-      "notes": "Two recent women sent addresses, so 'she' is genuinely ambiguous. The right behavior is to surface both candidates (or ask which), never to silently pick one.",
-      "enabled": true,
-      "score_case": true,
-      "min_evidence": 0,
-      "require_citation": false,
-      "expected_path": "model",
-      "control_turns": [
-        {"role": "user", "content": "What address did Adriana send?"},
-        {"role": "assistant", "content": "Adriana sent Rua Afonso enes n°17 R/c [1]."},
-        {"role": "user", "content": "Okay. Also remind me who sent the Pensão Amor address."},
-        {"role": "assistant", "content": "Anna forwarded Rua do Alecrim n. 28C 1.ºDto 1200-018 Lisboa [1]."},
-        {"role": "user", "content": "And what store thing did Anna ask for?"},
-        {"role": "assistant", "content": "She asked someone to stop by the store for her [1]."}
-      ],
-      "memory_state": {
-        "control_summary": "We already answered Adriana's address, then switched to the Pensão Amor forwarding chain and Anna's store request."
-      },
-      "context_budget_class": "",
-      "answer_contains_pool": ["Rua Afonso", "Rua do Alecrim", "which"],
-      "answer_contains_count": 2
-    },
-    {
-      "id": "mixed_source_paraphrase",
-      "question": "Remind me who Addy is, and what address did she send?",
-      "tags": ["control-memory", "mixed-source", "paraphrase"],
-      "notes": "Relationship comes from structured memory; the address comes from archive retrieval with a citation. Sources must not be conflated.",
-      "enabled": true,
-      "score_case": true,
-      "min_evidence": 1,
-      "require_citation": true,
-      "expected_path": "model",
-      "memory_state": {
-        "facts": [
-          {
-            "subject": "Addy",
-            "predicate": "identity",
-            "object": "Adrienne Peña",
-            "source": "user-approved fact"
-          },
-          {
-            "subject": "Adrienne Peña",
-            "predicate": "relationship_to_user",
-            "object": "girlfriend",
-            "source": "user-approved fact"
-          }
-        ]
-      },
-      "expected_sources": ["memory", "archive"],
-      "context_budget_class": "short",
-      "answer_contains_any": ["girlfriend", "Adrienne"]
+      }
     }
   ]
 }

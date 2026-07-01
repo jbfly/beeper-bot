@@ -16,6 +16,8 @@ Run a private agent behind a Beeper control chat. The agent indexes selected Bee
 
 Beyond archive QA, the control chat supports:
 - `/catchup <chat>`: digest of a group chat since the last catch-up
+- configured `[chat_sets.<name>]`: curated multi-chat digests for places or events, e.g. Neighborhood or Sample Festival
+- natural-language digests: "what is happening in Neighborhood?" routes to the same catch-up machinery
 - `/index <chat>`: add any Beeper chat to the archive at runtime
 - on-the-fly indexing: questions that name an unindexed chat trigger a sync
 - `auto_index_recent_days` config: automatically index recently active chats
@@ -37,8 +39,6 @@ deeper design notes and history:
 - `docs/control-chat-memory-and-eval-plan.md`
 - `docs/chat-coverage-plan.md`
 - `docs/multimodal-memos-and-images-plan.md`
-- `docs/remote-alpha-workflow.md`
-- `docs/alpha-matrix-wake-listener.md`
 
 ## Local model endpoint
 
@@ -63,8 +63,7 @@ Run the starter benchmark suite:
 Active model since 2026-06-12: **Gemma 4 12B Q6_K**
 (`gemma4-google-12b-q6_k-local`), chosen for text parity with the 26B plus
 native audio and image input for the multimodal roadmap. Current
-deterministic baseline (43-chat archive, porter-stemmed FTS, schema v5;
-verified identical across two consecutive runs):
+deterministic baseline from the private development archive is not published. The committed suites are synthetic public-safe examples:
 
 - `starter`: `8/8` scored passed
 - `core`: `20/20` scored passed
@@ -72,7 +71,7 @@ verified identical across two consecutive runs):
 - `control-routing`: `3/3` passed (deterministic product routing, no LLM)
 - `control-memory`: `9/9` scored passed through the model path (includes
   an ambiguous-pronoun case that rewards surfacing both candidates)
-- `catchup`: `5/5` scored passed (real Bom Sucesso group-chat digests)
+- `catchup`: `5/5` scored passed (synthetic public-safe group-chat digests)
 - `media`: `3/3` scored passed (voice-memo transcript/summary lookup)
 - `context-ladder`: `9/9` scored passed across all rungs, after fixing two
   suite-validity defects (an unverifiable "summary" source expectation,

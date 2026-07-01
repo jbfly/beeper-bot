@@ -1241,7 +1241,7 @@ def _supplement_search_queries(question: str, plan: QueryPlan, resolved_people: 
 
     if "alarm" in lowered:
         add("alarm app")
-        add("Olarm")
+        add("AlarmCo")
 
     if "outage" in lowered or "power" in lowered:
         add("loadshedding")
@@ -1350,7 +1350,7 @@ def ask_archive(
         first_token = sender_name.casefold().split()[0] if sender_name else ""
         if first_token and first_token in effective_question.casefold() and ("address" in effective_question.casefold() or any(verb in effective_question.casefold() for verb in SPEAKER_VERBS)):
             # Hard-restricting to a sender the archive has never seen (the
-            # planner can invent ones like "the Rooiels host") guarantees
+            # planner can invent ones like "the Sample Bay host") guarantees
             # zero results; only restrict to real senders.
             known_senders = {name.casefold() for name in collect_search_catalog(config).sender_names}
             if sender_name.casefold() in known_senders:

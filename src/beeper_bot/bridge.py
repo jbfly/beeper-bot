@@ -225,6 +225,8 @@ class ControlBridge:
             return RemoteCommand("index", stripped[len("/index "):].strip())
         if stripped.startswith("/catchup "):
             return RemoteCommand("catchup", stripped[len("/catchup "):].strip())
+        if stripped == "/music" or stripped.startswith("/music "):
+            return RemoteCommand("music", stripped[len("/music"):].strip())
         return RemoteCommand("ask", stripped)
 
     def _latest_sort_key(self, messages: list[dict]) -> int | None:
@@ -345,8 +347,8 @@ class ControlBridge:
     def _help_text(self) -> str:
         return (
             f"{self.config.bridge.reply_prefix}Commands: plain text or /ask <question> = answer from local archive, "
-            f"/find <query> = search archive, /catchup <chat> = digest of a chat since last catch-up, "
-            f"/index <chat> = add a Beeper chat to the archive, /status = runtime status, /reindex = force sync, /help = this help."
+            f"/find <query> = search archive, /catchup <chat-or-set> = digest of a chat or configured chat set since last catch-up, "
+            f"/index <chat> = add a Beeper chat to the archive, /music <issue> = log a music-library issue (tags what's playing now), /status = runtime status, /reindex = force sync, /help = this help."
         )
 
     def _status_text(self) -> str:
@@ -363,6 +365,30 @@ class ControlBridge:
             self.api_client.send_message(self.control_chat_id, part)
         log(f"reply sent parts={len(parts)} chars={sum(len(p) for p in parts)}")
         return text
+
+    def _handle_music(self, text: str) -> str:
+        """Capture a music-library issue into the fixer queue, snapshotting now-playing.
+
+        Delegates to music-library-project/scripts/fixer_capture.py so the capture
+        logic (Navidrome getNowPlaying at capture time + queue append) lives with
+        the library tooling, not the bot.
+        """
+        if not text:
+            return self._reply(
+                f"{self.config.bridge.reply_prefix}usage: /music <what's wrong or wanted> "
+                "- captures it together with what's playing right now."
+            )
+        import subprocess
+        try:
+            proc = subprocess.run(
+                ["/usr/bin/python3",
+                 "/home/jbfly/git/music-library-project/scripts/fixer_capture.py", text],
+                capture_output=True, text=True, timeout=45,
+            )
+            msg = (proc.stdout or proc.stderr or "").strip() or f"capture exited rc={proc.returncode}"
+        except Exception as exc:
+            msg = f"capture failed: {exc}"
+        return self._reply(f"{self.config.bridge.reply_prefix}{msg}")
 
     def _handle_command(self, command: RemoteCommand) -> str | None:
         if command.mode == "ignore":
@@ -432,6 +458,8 @@ class ControlBridge:
             if response.proposed_action:
                 queue_proposed_action(self.config, response.proposed_action)
             return self._reply(f"{self.config.bridge.reply_prefix}{rendered}")
+        if command.mode == "music":
+            return self._handle_music(command.text)
         raise RuntimeError(f"Unknown command mode: {command.mode}")
 
     def process_once(self) -> BridgeLoopResult:

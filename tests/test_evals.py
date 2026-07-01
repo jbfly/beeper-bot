@@ -126,7 +126,7 @@ class EvalTest(unittest.TestCase):
                         "plan_preferred_sender_any": ["Seth"],
                         "metrics_only": True,
                         "control_turns": [
-                            {"role": "user", "content": "Remember that Anna is my sister."},
+                            {"role": "user", "content": "Remember that Alex is my sister."},
                             {"role": "assistant", "content": "Okay, I can store that after confirmation."}
                         ],
                         "memory_state": {
@@ -176,18 +176,18 @@ class EvalTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         case = EvalCase(
             case_id="memory",
-            question="Who is Anna again?",
+            question="Who is Alex again?",
             min_evidence=0,
             require_citation=False,
             answer_contains_any=["sister"],
             expected_sources=["memory"],
             memory_state={
                 "facts": [
-                    {"subject": "Anna Bonewitz", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
+                    {"subject": "Alex Morgan", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
                 ]
             },
         )
-        result = evaluate_case(config, case, llm_client=FakeLlmClient("Anna Bonewitz is your sister."))
+        result = evaluate_case(config, case, llm_client=FakeLlmClient("Alex Morgan is your sister."))
         self.assertTrue(result.passed)
         self.assertIn("memory", result.inferred_sources)
         self.assertNotIn("archive", result.inferred_sources)
@@ -204,11 +204,11 @@ class EvalTest(unittest.TestCase):
             expected_sources=["memory"],
             memory_state={
                 "facts": [
-                    {"subject": "Anna Bonewitz", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
+                    {"subject": "Alex Morgan", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
                 ]
             },
         )
-        result = evaluate_case(config, case, llm_client=FakeLlmClient("Anna Bonewitz is your sister [1]."))
+        result = evaluate_case(config, case, llm_client=FakeLlmClient("Alex Morgan is your sister [1]."))
         self.assertFalse(result.passed)
         self.assertIn("answer used archive-style citation where archive source was not expected", result.failures)
 
@@ -320,11 +320,11 @@ class EvalTest(unittest.TestCase):
             "cases": [
                 {
                     "id": "memory_case",
-                    "question": "Who is Anna again?",
+                    "question": "Who is Alex again?",
                     "expected_sources": ["memory"],
                     "memory_state": {
                         "facts": [
-                            {"subject": "Anna Bonewitz", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
+                            {"subject": "Alex Morgan", "predicate": "relationship_to_user", "object": "sister", "source": "user-approved fact"}
                         ]
                     },
                     "answer_contains_any": ["sister"]
@@ -332,7 +332,7 @@ class EvalTest(unittest.TestCase):
             ]
         }))
         suite = load_eval_suite(suite_path)
-        result = run_eval_suite(config, suite, llm_client=FakeLlmClient("Anna Bonewitz is your sister."))
+        result = run_eval_suite(config, suite, llm_client=FakeLlmClient("Alex Morgan is your sister."))
         text = format_suite_result(result)
         self.assertIn("Sources: expected=['memory'] inferred=['memory']", text)
 
@@ -341,7 +341,7 @@ class EvalTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         case = EvalCase(
             case_id="alias-add",
-            question="Remember that Addy is Adrienne Peña.",
+            question="Remember that Addy is Jordan Lee.",
             min_evidence=0,
             require_citation=False,
             expected_actions=["confirm-memory-write", "add-alias"],
@@ -350,7 +350,7 @@ class EvalTest(unittest.TestCase):
         result = evaluate_case(
             config,
             case,
-            llm_client=FakeLlmClient("I can save that as an alias for Adrienne Peña. Please confirm before I save it."),
+            llm_client=FakeLlmClient("I can save that as an alias for Jordan Lee. Please confirm before I save it."),
         )
         self.assertTrue(result.passed)
         self.assertIn("confirm-memory-write", result.inferred_actions)
@@ -361,7 +361,7 @@ class EvalTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         case = EvalCase(
             case_id="alias-add-missing",
-            question="Please store that Addy is Adrienne Peña.",
+            question="Please store that Addy is Jordan Lee.",
             min_evidence=0,
             require_citation=False,
             expected_actions=["confirm-memory-write", "add-alias"],
@@ -380,14 +380,14 @@ class EvalTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         case = EvalCase(
             case_id="memory-lookup-direct-path",
-            question="Who is Anna again?",
+            question="Who is Alex again?",
             min_evidence=0,
             require_citation=False,
             expected_path="model",
             memory_state={
                 "facts": [
                     {
-                        "subject": "Anna Bonewitz",
+                        "subject": "Alex Morgan",
                         "predicate": "relationship_to_user",
                         "object": "sister",
                         "source": "user-approved fact",
@@ -406,14 +406,14 @@ class EvalTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         case = EvalCase(
             case_id="memory-lookup-direct-ok",
-            question="Who is Anna again?",
+            question="Who is Alex again?",
             min_evidence=0,
             require_citation=False,
             expected_path="direct",
             memory_state={
                 "facts": [
                     {
-                        "subject": "Anna Bonewitz",
+                        "subject": "Alex Morgan",
                         "predicate": "relationship_to_user",
                         "object": "sister",
                         "source": "user-approved fact",

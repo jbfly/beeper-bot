@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .config import AppConfig
+from .config import AppConfig, ChatSetConfig
 from .db import get_runtime_state, open_db, set_runtime_state, utc_now
 from .tracing import trace_event
 
@@ -33,9 +33,16 @@ class CatchupResult:
     summary: str
 
 
+@dataclass(slots=True)
+class ResolvedChatSelection:
+    chats: list[tuple[str, str]]
+    display_name: str | None = None
+    is_chat_set: bool = False
+
+
 def _fuzzy_score(query: str, title: str) -> float:
     """Whole-string similarity, boosted by per-token close matches so
-    misspellings like 'boomerangatangs' or 'bom successo' still resolve."""
+    misspellings like 'sample volunters' or 'neighborhood' still resolve."""
     whole = difflib.SequenceMatcher(None, query, title).ratio()
     title_tokens = [token for token in re.findall(r"[\w'À-ÿ]+", title) if len(token) >= 3]
     query_tokens = [token for token in re.findall(r"[\w'À-ÿ]+", query) if len(token) >= 3]
@@ -49,14 +56,9 @@ def _fuzzy_score(query: str, title: str) -> float:
     return max(whole, token_score)
 
 
-def resolve_chats(config: AppConfig, chat_query: str, limit: int = MAX_CATCHUP_CHATS) -> list[tuple[str, str]]:
-    """All archive chats matching a title query, best first. Exact and
-    substring matches win; token and fuzzy matches cover typos."""
-    query = chat_query.strip().casefold()
-    if not query:
-        raise CatchupError("Chat name is required")
+def _chat_rows(config: AppConfig):
     with open_db(config.archive.path) as conn:
-        rows = conn.execute(
+        return conn.execute(
             """
             SELECT c.chat_id, c.name, MAX(m.sort_key) AS latest
             FROM chats c
@@ -64,6 +66,74 @@ def resolve_chats(config: AppConfig, chat_query: str, limit: int = MAX_CATCHUP_C
             GROUP BY c.chat_id, c.name
             """
         ).fetchall()
+
+
+def _normalize_set_label(value: str) -> str:
+    words = re.findall(r"[\w'À-ÿ]+", value.replace("_", " "))
+    return " ".join(words).casefold()
+
+
+def _configured_chat_set(config: AppConfig, chat_query: str) -> ChatSetConfig | None:
+    query = _normalize_set_label(chat_query)
+    if not query:
+        return None
+    substring_match: ChatSetConfig | None = None
+    for chat_set in config.chat_sets.values():
+        labels = [chat_set.name, chat_set.display_name, *chat_set.aliases]
+        for label in labels:
+            normalized = _normalize_set_label(label)
+            if not normalized:
+                continue
+            if query == normalized:
+                return chat_set
+            query_words = query.split()
+            label_words = normalized.split()
+            if len(query_words) >= 2 and len(label_words) >= 2 and (query in normalized or normalized in query):
+                substring_match = substring_match or chat_set
+    return substring_match
+
+
+def _select_configured_chats(config: AppConfig, chat_set: ChatSetConfig, limit: int) -> list[tuple[str, str]]:
+    rows = _chat_rows(config)
+    selected: list[tuple[int, str, str]] = []
+    seen: set[str] = set()
+
+    def add(row: Any) -> None:
+        chat_id = str(row["chat_id"])
+        if chat_id in seen:
+            return
+        seen.add(chat_id)
+        selected.append((int(row["latest"] or 0), chat_id, str(row["name"] or chat_id)))
+
+    for entry in chat_set.chats:
+        wanted = entry.strip()
+        if not wanted:
+            continue
+        lowered = wanted.casefold()
+        exact_id = [row for row in rows if str(row["chat_id"]) == wanted]
+        exact_title = [row for row in rows if str(row["name"] or "").casefold() == lowered]
+        substring = [row for row in rows if lowered and lowered in str(row["name"] or "").casefold()]
+        matches = exact_id or exact_title or substring
+        if not matches:
+            matches = [row for row in rows if _fuzzy_score(lowered, str(row["name"] or "").casefold()) >= FUZZY_MATCH_CUTOFF]
+        matches.sort(key=lambda row: int(row["latest"] or 0), reverse=True)
+        for row in matches:
+            add(row)
+            if len(selected) >= limit:
+                break
+        if len(selected) >= limit:
+            break
+    selected.sort(reverse=True)
+    return [(chat_id, name) for _, chat_id, name in selected[: max(1, limit)]]
+
+
+def _resolve_chats_by_title(config: AppConfig, chat_query: str, limit: int) -> list[tuple[str, str]]:
+    """All archive chats matching a title query, best first. Exact and
+    substring matches win; token and fuzzy matches cover typos."""
+    query = chat_query.strip().casefold()
+    if not query:
+        raise CatchupError("Chat name is required")
+    rows = _chat_rows(config)
     scored: list[tuple[float, int, str, str]] = []
     fuzzy: list[tuple[float, int, str, str]] = []
     for row in rows:
@@ -81,13 +151,26 @@ def resolve_chats(config: AppConfig, chat_query: str, limit: int = MAX_CATCHUP_C
             ratio = _fuzzy_score(query, lowered)
             if ratio >= FUZZY_MATCH_CUTOFF:
                 fuzzy.append((ratio, latest, chat_id, name))
-    # Fuzzy hits ride along with literal ones: 'boom' must collect the
-    # 'Booom' chats even though Boomerangutans matches literally.
+    # Fuzzy hits ride along with literal ones: 'sample' must collect the
+    # 'Sample' chats even though Sample Volunteers matches literally.
     matches = scored + fuzzy
     if not matches:
         raise CatchupError(f"No indexed chat matches '{chat_query.strip()}'")
     matches.sort(reverse=True)
     return [(chat_id, name) for _, _, chat_id, name in matches[: max(1, limit)]]
+
+
+def resolve_chat_selection(config: AppConfig, chat_query: str, limit: int = MAX_CATCHUP_CHATS) -> ResolvedChatSelection:
+    chat_set = _configured_chat_set(config, chat_query)
+    if chat_set is not None:
+        chats = _select_configured_chats(config, chat_set, max(1, limit))
+        if chats:
+            return ResolvedChatSelection(chats=chats, display_name=chat_set.display_name, is_chat_set=True)
+    return ResolvedChatSelection(chats=_resolve_chats_by_title(config, chat_query, limit))
+
+
+def resolve_chats(config: AppConfig, chat_query: str, limit: int = MAX_CATCHUP_CHATS) -> list[tuple[str, str]]:
+    return resolve_chat_selection(config, chat_query, limit).chats
 
 
 def resolve_chat(config: AppConfig, chat_query: str) -> tuple[str, str]:
@@ -221,9 +304,10 @@ def catchup_summary(
     since_sort_key: int | None = None,
     update_cursor: bool = True,
 ) -> CatchupResult:
-    """Digest one chat, or all chats matching the query (e.g. 'bom sucesso'
-    matches every Bom Sucesso group). Cursors advance per chat."""
-    chats = resolve_chats(config, chat_query)
+    """Digest one chat, or all chats matching the query (e.g. 'neighborhood'
+    matches every Neighborhood group). Cursors advance per chat."""
+    selection = resolve_chat_selection(config, chat_query)
+    chats = selection.chats
 
     sections: list[tuple[str, list[dict[str, Any]], bool]] = []
     quiet: list[str] = []
@@ -259,7 +343,13 @@ def catchup_summary(
         else:
             quiet.append(chat_name)
 
-    display_name = chats[0][1] if len(chats) == 1 else f"{len(chats)} chats: " + ", ".join(name for _, name in chats)
+    if selection.is_chat_set and selection.display_name:
+        if len(chats) == 1:
+            display_name = f"{selection.display_name}: {chats[0][1]}"
+        else:
+            display_name = f"{selection.display_name} ({len(chats)} chats: " + ", ".join(name for _, name in chats) + ")"
+    else:
+        display_name = chats[0][1] if len(chats) == 1 else f"{len(chats)} chats: " + ", ".join(name for _, name in chats)
 
     if not sections:
         summary = f"No new messages in {display_name} since the last catch-up."
@@ -291,12 +381,28 @@ def catchup_summary(
 
 
 DIGEST_INTENT_RE = re.compile(
-    r"\b(?:summar\w*|recap|tl;?dr|gist|overview|catch\s+(?:me\s+)?up|what'?s\s+(?:been\s+)?(?:happening|going\s+on|new)|update\s+me)\b",
+    r"\b(?:summar\w*|recap|tl;?dr|gist|overview|catch\s+(?:me\s+)?up|(?:what'?s|what\s+is)\s+(?:been\s+)?(?:happening|going\s+on|new)|update\s+me)\b",
     re.IGNORECASE,
 )
 CHAT_NOUN_RE = re.compile(r"^(?:group\s+)?(?:chats?|groups?|channels?)\b", re.IGNORECASE)
 CHAT_NAME_BEFORE_NOUN_RE = re.compile(
     r"([\w'&@.\-À-ÿ ]{2,60}?)\s+(?:group\s+)?(?:chats?|groups?|channels?)\b",
+    re.IGNORECASE,
+)
+HAPPENING_IN_RE = re.compile(
+    r"\b(?:what'?s|what\s+is)\s+(?:been\s+)?(?:happening|going\s+on)\s+(?:in|around|with|about)\s+([^?!.]+)",
+    re.IGNORECASE,
+)
+UPDATE_ON_RE = re.compile(
+    r"\b(?:catch\s+(?:me\s+)?up|update\s+me)\s+(?:on|about|with)\s+([^?!.]+)",
+    re.IGNORECASE,
+)
+SUMMARY_AROUND_RE = re.compile(
+    r"\b(?:summar\w*|recap|overview|gist)\b.{0,40}\b(?:in|around|about)\s+([^?!.]+)",
+    re.IGNORECASE,
+)
+RELATED_TO_RE = re.compile(
+    r"\b(?:related\s+to|about)\s+([^?!.]+)",
     re.IGNORECASE,
 )
 _DIGEST_STOPWORDS = {
@@ -307,20 +413,36 @@ _DIGEST_STOPWORDS = {
 }
 
 
-def parse_chat_digest_request(question: str) -> str | None:
-    """Detect 'summarize the X chat(s)' shapes and return the chat-name
-    query. Generic command shapes only; returns None when no digest intent
-    or no chat noun is present."""
-    if not DIGEST_INTENT_RE.search(question):
-        return None
-    match = CHAT_NAME_BEFORE_NOUN_RE.search(question)
-    if not match:
-        return None
-    tokens = match.group(1).split()
+def _clean_digest_query(value: str) -> str | None:
+    tokens = value.split()
     while tokens and tokens[0].casefold().strip("?,.!") in _DIGEST_STOPWORDS:
         tokens.pop(0)
     query = " ".join(tokens).strip(" ?.!,")
+    query = re.sub(r"^(?:group\s+)?(?:chats?|groups?|channels?)\s+(?:related\s+to|about)\s+", "", query, flags=re.IGNORECASE)
+    query = re.sub(r"\s+(?:group\s+)?(?:chats?|groups?|channels?)\s*$", "", query, flags=re.IGNORECASE).strip(" ?.!,")
     return query or None
+
+
+def parse_chat_digest_request(question: str) -> str | None:
+    """Detect digest requests and return the chat or chat-set query.
+    Handles explicit chat nouns plus natural forms like 'what is happening
+    in Neighborhood'. Generic shapes only; memo/address questions fall
+    through to their own routes."""
+    if not DIGEST_INTENT_RE.search(question):
+        return None
+    match = CHAT_NAME_BEFORE_NOUN_RE.search(question)
+    if match:
+        query = _clean_digest_query(match.group(1))
+        if query:
+            return query
+    for pattern in (HAPPENING_IN_RE, UPDATE_ON_RE, SUMMARY_AROUND_RE, RELATED_TO_RE):
+        match = pattern.search(question)
+        if not match:
+            continue
+        query = _clean_digest_query(match.group(1))
+        if query:
+            return query
+    return None
 
 
 def format_catchup_result(result: CatchupResult) -> str:

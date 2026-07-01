@@ -174,6 +174,13 @@ exclude_chat_ids = ["<chat-id>"]   # never transcribe/describe these
 auto_derive = true                  # derive a few attachments per sync cycle
 auto_derive_per_cycle = 3
 
+# Named sets for multi-chat digests. Values in chats may be chat ids or
+# title fragments. Exact title/id matches are preferred.
+[chat_sets.neighborhood]
+display_name = "Neighborhood"
+aliases = ["neighborhood", "neighbors"]
+chats = ["Neighborhood Community", "Building Updates"]
+
 [security]
 allow_web_search = false
 log_raw_messages = false
@@ -208,9 +215,7 @@ must be verifiable from the answer (archive = a valid citation). Determinism
 caveat: llama-server KV-cache reuse can flip a borderline case run-to-run
 (§4.3.1) — run twice for high-stakes comparisons.
 
-Current deterministic baseline on the 12B (`state/eval-12b/`): **all scored
-suites green** — starter 8/8, core 20/20, slice 14/14, control-routing 3/3,
-control-memory 9/9, catchup 5/5, media 3/3, context-ladder 9/9.
+The committed `eval/` suites are synthetic public-safe examples. Keep real local benchmark outputs under ignored `state/` paths or another private location.
 
 ---
 
@@ -223,8 +228,9 @@ control-memory 9/9, catchup 5/5, media 3/3, context-ladder 9/9.
 
 **Control chat:** plain text = `/ask`; also `/find`, `/catchup <chat>`,
 `/index <chat>`, `/status`, `/reindex`, `/help`. Natural language also
-routes: "summarize the X chat(s)", "transcript/summary of my last voice
-memo", "remember that X is Y" (confirmation-gated). Replies are reformatted
+routes: "summarize the X chat(s)", "what is happening in X", configured
+chat-set names such as "Neighborhood" or "Sample Festival", "transcript/summary
+of my last voice memo", "remember that X is Y" (confirmation-gated). Replies are reformatted
 for plain-text Matrix (markdown → 🔹 headers, `•` bullets, blank lines) and
 split into multiple `(i/n)` messages when over `max_reply_chars`.
 
@@ -239,10 +245,7 @@ split into multiple `(i/n)` messages when over `max_reply_chars`.
   background sync every `sync_interval_seconds` (with media auto-derivation),
   and uses a fast "quick sync" before answering so questions don't block on
   first-time backfills.
-- As of the last session: 12B active; ~43 chats explicitly indexed plus
-  recent-activity auto-indexing; all archive voice memos transcribed; Bom
-  Sucesso images OCR'd; remaining images auto-derive over time. The Adrienne
-  (Facebook) trip-photo chat and `#wordle` are media-excluded.
+- As of the public repo pass: runtime data, local eval outputs, and private media-derived text must stay outside git. Keep live operational notes in private local docs.
 
 ---
 
@@ -252,6 +255,9 @@ split into multiple `(i/n)` messages when over `max_reply_chars`.
 - **Derived media text is just text:** transcripts/descriptions are written
   into `messages.text` + FTS, so retrieval/slice/catchup/evals see them with
   no special-casing. Sync re-applies them after upserts rewrite media rows.
+- **Chat sets live in config:** use `[chat_sets.<name>]` for curated groups
+  such as Neighborhood or Sample Festival. Do not bake private community names
+  into source code.
 - **No question-literal matching in `src/`** — it's an eval-overfitting smell
   the harness is designed to catch. Route by generic command/intent shapes.
 - **Aliases live only in the people graph.** Memory facts may reference a

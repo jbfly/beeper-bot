@@ -13,7 +13,6 @@ DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "beeper-bot"
 DEFAULT_DB_PATH = DEFAULT_STATE_DIR / "archive.sqlite3"
 DEFAULT_LOCK_PATH = DEFAULT_STATE_DIR / "serve.lock"
 DEFAULT_BEEPER_API_BASE = "http://127.0.0.1:23373/v1"
-DEFAULT_BEEPER_CREDENTIALS_FILE = Path.home() / ".codex" / ".credentials.json"
 DEFAULT_LLM_BASE_URL = "http://127.0.0.1:8090/v1"
 DEFAULT_LLM_MODEL = "gemma"
 DEFAULT_REPLY_PREFIX = "[BEEPER-BOT] "
@@ -23,7 +22,7 @@ DEFAULT_REPLY_PREFIX = "[BEEPER-BOT] "
 class BeeperConfig:
     api_base: str = DEFAULT_BEEPER_API_BASE
     token_file: Path = Path.home() / ".config" / "beeper-bot" / "token"
-    credentials_file: Path = DEFAULT_BEEPER_CREDENTIALS_FILE
+    credentials_file: Path | None = None
     control_chat_id: str = ""
     indexed_chat_ids: list[str] = field(default_factory=list)
     poll_seconds: int = 5
@@ -70,6 +69,14 @@ class MediaConfig:
 
 
 @dataclass(slots=True)
+class ChatSetConfig:
+    name: str
+    display_name: str
+    aliases: list[str] = field(default_factory=list)
+    chats: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class SecurityConfig:
     allow_web_search: bool = False
     log_raw_messages: bool = False
@@ -83,6 +90,7 @@ class AppConfig:
     llm: LlmConfig = field(default_factory=LlmConfig)
     bridge: BridgeConfig = field(default_factory=BridgeConfig)
     media: MediaConfig = field(default_factory=MediaConfig)
+    chat_sets: dict[str, ChatSetConfig] = field(default_factory=dict)
     security: SecurityConfig = field(default_factory=SecurityConfig)
 
     @property
@@ -149,6 +157,31 @@ def _str_list_value(section: dict[str, Any], key: str, default: list[str] | None
     return [str(item) for item in value]
 
 
+def _chat_sets_value(raw: dict[str, Any]) -> dict[str, ChatSetConfig]:
+    result: dict[str, ChatSetConfig] = {}
+    for key, value in raw.items():
+        name = str(key)
+        fallback_name = name.replace("_", " ")
+        if isinstance(value, list):
+            result[name] = ChatSetConfig(
+                name=name,
+                display_name=fallback_name,
+                aliases=[fallback_name],
+                chats=[str(item) for item in value],
+            )
+            continue
+        if not isinstance(value, dict):
+            raise ConfigError(f"Config section [chat_sets.{name}] must be a table or list")
+        display_name = str(value.get("display_name", fallback_name) or fallback_name)
+        result[name] = ChatSetConfig(
+            name=name,
+            display_name=display_name,
+            aliases=_str_list_value(value, "aliases", [fallback_name, display_name]),
+            chats=_str_list_value(value, "chats", []),
+        )
+    return result
+
+
 def load_config(path: Path | str | None = None) -> AppConfig:
     config_path = Path(path).expanduser() if path else DEFAULT_CONFIG_PATH
     raw: dict[str, Any] = {}
@@ -161,6 +194,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
     llm_raw = _get_table(raw, "llm")
     bridge_raw = _get_table(raw, "bridge")
     media_raw = _get_table(raw, "media")
+    chat_sets_raw = _get_table(raw, "chat_sets")
     security_raw = _get_table(raw, "security")
 
     config = AppConfig(
@@ -168,7 +202,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         beeper=BeeperConfig(
             api_base=str(beeper_raw.get("api_base", DEFAULT_BEEPER_API_BASE)),
             token_file=_path_value(beeper_raw, "token_file", Path.home() / ".config" / "beeper-bot" / "token"),
-            credentials_file=_path_value(beeper_raw, "credentials_file", DEFAULT_BEEPER_CREDENTIALS_FILE),
+            credentials_file=_path_value(beeper_raw, "credentials_file", Path("")) if beeper_raw.get("credentials_file") else None,
             control_chat_id=str(beeper_raw.get("control_chat_id", "")),
             indexed_chat_ids=_str_list_value(beeper_raw, "indexed_chat_ids", []),
             poll_seconds=_int_value(beeper_raw, "poll_seconds", 5),
@@ -205,6 +239,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
             auto_derive=_bool_value(media_raw, "auto_derive", True),
             auto_derive_per_cycle=_int_value(media_raw, "auto_derive_per_cycle", 3),
         ),
+        chat_sets=_chat_sets_value(chat_sets_raw),
         security=SecurityConfig(
             allow_web_search=_bool_value(security_raw, "allow_web_search", False),
             log_raw_messages=_bool_value(security_raw, "log_raw_messages", False),

@@ -154,7 +154,7 @@ class LlmTest(unittest.TestCase):
             "Welcome to the house.<br><br>"
             "Keys will be in the key box by the front door.<br><br>"
             "Check in starts from 2pm onwards.<br><br>"
-            "Please send proof of payment to 181blenna@gmail.com before arrival."
+            "Please send proof of payment to host@example.test before arrival."
         )
         evidence = build_evidence_packet(
             [
@@ -173,7 +173,7 @@ class LlmTest(unittest.TestCase):
             1,
             question="What email did the note say to send proof of payment to?",
         )
-        self.assertIn("181blenna@gmail.com", evidence[0].excerpt)
+        self.assertIn("host@example.test", evidence[0].excerpt)
         self.assertNotIn("Welcome to the house.", evidence[0].excerpt)
 
     def test_format_ask_response_appends_sources(self) -> None:
@@ -217,24 +217,24 @@ class LlmTest(unittest.TestCase):
             "results": [
                 type("Item", (), {
                     "message_id": "msg-1",
-                    "text": "Olá Ana\nDeixo a morada da nossa sede: Rua do Alecrim n. 28C 1.ºDto 1200-018 Lisboa\nObrigada\nTeresa Roque\nPensão Amor - Grp Mainside",
-                    "sender_name": "Anna Bonewitz",
-                    "chat_name": "Anna Bonewitz",
+                    "text": "Olá Ana\nDeixo a morada da nossa sede: 456 Example Ave\nObrigada\nTeresa Roque\nSample Cafe - Grp Mainside",
+                    "sender_name": "Alex Morgan",
+                    "chat_name": "Alex Morgan",
                     "score": 66.3,
                 })()
             ]
         })()
         evidence = [
-            EvidenceItem("[1]", "msg-1", "chat-a", "Anna Bonewitz", "Anna Bonewitz", "2026-05-13T10:30:36.000Z", "Rua do Alecrim n. 28C 1.ºDto 1200-018 Lisboa", 66.3)
+            EvidenceItem("[1]", "msg-1", "chat-a", "Alex Morgan", "Alex Morgan", "2026-05-13T10:30:36.000Z", "456 Example Ave", 66.3)
         ]
         repaired = _repair_address_answer_from_retrieval(
-            "What address was sent for Pensão Amor?",
-            "The provided evidence does not contain an address for Pensão Amor.",
+            "What address was sent for Sample Cafe?",
+            "The provided evidence does not contain an address for Sample Cafe.",
             retrieval,
             evidence,
         )
-        self.assertIn("Rua do Alecrim", repaired)
-        self.assertIn("1200-018 Lisboa", repaired)
+        self.assertIn("456 Example Ave", repaired)
+        self.assertIn("[1]", repaired)
         self.assertIn("[1]", repaired)
 
     def test_ask_archive_uses_llm_and_evidence(self) -> None:
@@ -272,11 +272,11 @@ class LlmTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         response = ask_archive(
             config,
-            "Who is Anna again?",
+            "Who is Alex again?",
             memory_state={
                 "facts": [
                     {
-                        "subject": "Anna Bonewitz",
+                        "subject": "Alex Morgan",
                         "predicate": "relationship_to_user",
                         "object": "sister",
                         "source": "user-approved fact",
@@ -284,7 +284,7 @@ class LlmTest(unittest.TestCase):
                 ]
             },
         )
-        self.assertEqual(response.answer, "Anna Bonewitz is your sister.")
+        self.assertEqual(response.answer, "Alex Morgan is your sister.")
         self.assertEqual(response.evidence, [])
 
     def test_ask_archive_can_return_alias_confirmation_directly(self) -> None:
@@ -292,28 +292,28 @@ class LlmTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         response = ask_archive(
             config,
-            "Remember that Addy is Adrienne Peña.",
+            "Remember that Addy is Jordan Lee.",
         )
         self.assertIn("Please confirm before I save it.", response.answer)
-        self.assertIn("Addy → Adrienne Peña", response.answer)
+        self.assertIn("Addy → Jordan Lee", response.answer)
         self.assertEqual(response.evidence, [])
         self.assertEqual(response.answer_path, "direct")
         self.assertEqual(response.proposed_action["kind"], "add-alias")
         self.assertEqual(response.proposed_action["alias"], "Addy")
-        self.assertEqual(response.proposed_action["canonical_name"], "Adrienne Peña")
+        self.assertEqual(response.proposed_action["canonical_name"], "Jordan Lee")
 
     def test_ask_archive_proposes_relationship_fact_not_alias(self) -> None:
         config, tmpdir = self._config_with_data()
         self.addCleanup(tmpdir.cleanup)
         response = ask_archive(
             config,
-            "Remember that Anna is my sister.",
+            "Remember that Alex is my sister.",
         )
         self.assertIn("Please confirm before I save it.", response.answer)
         self.assertNotIn("alias", response.answer)
         self.assertEqual(response.answer_path, "direct")
         self.assertEqual(response.proposed_action["kind"], "add-relationship-fact")
-        self.assertEqual(response.proposed_action["subject"], "Anna")
+        self.assertEqual(response.proposed_action["subject"], "Alex")
         self.assertEqual(response.proposed_action["relationship"], "sister")
 
     def test_ask_archive_uses_planner_resolved_question_for_followups(self) -> None:
@@ -351,7 +351,7 @@ class LlmTest(unittest.TestCase):
             memory_state={
                 "facts": [
                     {
-                        "subject": "Anna Bonewitz",
+                        "subject": "Alex Morgan",
                         "predicate": "relationship_to_user",
                         "object": "sister",
                         "source": "user-approved fact",

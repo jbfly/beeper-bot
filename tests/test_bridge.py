@@ -86,14 +86,14 @@ class BridgeTest(unittest.TestCase):
             client = FakeBeeperClient(
                 chats={
                     "control-chat": {"title": "Control"},
-                    "indexed-chat": {"title": "Thomas Wright"},
+                    "indexed-chat": {"title": "Morgan Wright"},
                 },
                 messages={
                     "control-chat": [
-                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "/help"},
+                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "Operator", "type": "TEXT", "text": "/help"},
                     ],
                     "indexed-chat": [
-                        {"id": "m1", "sortKey": "10", "timestamp": "2026-06-03T18:10:58.000Z", "senderID": "u1", "senderName": "Thomas Wright", "type": "TEXT", "text": "Ryzen 7 5800X3D AM4 10th Anniversary Edition"},
+                        {"id": "m1", "sortKey": "10", "timestamp": "2026-06-03T18:10:58.000Z", "senderID": "u1", "senderName": "Morgan Wright", "type": "TEXT", "text": "Ryzen 7 5800X3D AM4 10th Anniversary Edition"},
                     ],
                 },
             )
@@ -104,14 +104,14 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(client.sent_messages, [])
 
             client.messages["control-chat"].append(
-                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "/help"}
+                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "Operator", "type": "TEXT", "text": "/help"}
             )
             second = bridge.process_once()
             self.assertEqual(second.replied_messages, 1)
             self.assertIn("Commands:", client.sent_messages[-1][1])
 
             client.messages["control-chat"].append(
-                {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "/find 5800X3D"}
+                {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "Operator", "type": "TEXT", "text": "/find 5800X3D"}
             )
             third = bridge.process_once()
             self.assertEqual(third.replied_messages, 1)
@@ -124,11 +124,11 @@ class BridgeTest(unittest.TestCase):
             client = FakeBeeperClient(
                 chats={
                     "control-chat": {"title": "Control"},
-                    "indexed-chat": {"title": "Thomas Wright"},
+                    "indexed-chat": {"title": "Morgan Wright"},
                 },
                 messages={
                     "control-chat": [
-                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "bootstrap"},
+                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "Operator", "type": "TEXT", "text": "bootstrap"},
                     ],
                     "indexed-chat": [],
                 },
@@ -136,7 +136,7 @@ class BridgeTest(unittest.TestCase):
             bridge = ControlBridge(config, api_client=client)
             bridge.process_once()
             client.messages["control-chat"].append(
-                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "What did Thomas send?"}
+                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "Operator", "type": "TEXT", "text": "What did Thomas send?"}
             )
 
             import beeper_bot.bridge as bridge_mod
@@ -161,7 +161,7 @@ class BridgeTest(unittest.TestCase):
                 },
                 messages={
                     "control-chat": [
-                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "bootstrap"},
+                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "Operator", "type": "TEXT", "text": "bootstrap"},
                     ],
                     "indexed-chat": [],
                 },
@@ -169,22 +169,22 @@ class BridgeTest(unittest.TestCase):
             bridge = ControlBridge(config, api_client=client)
             bridge.process_once()
             client.messages["control-chat"].append(
-                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "Remember that Addy is Adrienne Peña."}
+                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "Operator", "type": "TEXT", "text": "Remember that Addy is Jordan Lee."}
             )
             bridge.process_once()
             self.assertIn("Please confirm before I save it.", client.sent_messages[-1][1])
             client.messages["control-chat"].append(
-                {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "yes"}
+                {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "Operator", "type": "TEXT", "text": "yes"}
             )
             result = bridge.process_once()
             self.assertEqual(result.replied_messages, 1)
-            self.assertIn("Saved alias: Addy → Adrienne Peña.", client.sent_messages[-1][1])
+            self.assertIn("Saved alias: Addy → Jordan Lee.", client.sent_messages[-1][1])
 
     def test_format_reply_for_chat_converts_markdown(self) -> None:
         from beeper_bot.bridge import format_reply_for_chat
 
         raw = (
-            "## Fellow Owners\n"
+            "## Building Updates\n"
             "**Clubhouse Issues**\n"
             "*   **Wine Dinner:** Wilhelmina reported noise.\n"
             "- Second point here.\n"
@@ -192,7 +192,7 @@ class BridgeTest(unittest.TestCase):
             "Plain paragraph stays."
         )
         formatted = format_reply_for_chat(raw)
-        self.assertIn("🔹 Fellow Owners", formatted)
+        self.assertIn("🔹 Building Updates", formatted)
         self.assertIn("🔹 Clubhouse Issues", formatted)
         self.assertIn("• Wine Dinner: Wilhelmina reported noise.", formatted)
         self.assertIn("• Second point here.", formatted)
@@ -205,7 +205,7 @@ class BridgeTest(unittest.TestCase):
     def test_format_reply_keeps_plain_text_unchanged(self) -> None:
         from beeper_bot.bridge import format_reply_for_chat
 
-        plain = "Adriana sent Rua Afonso enes n°17 R/c [1].\n\nSources:\n[1] Housekeeping — Adriana — 2026-04-19"
+        plain = "Taylor sent 123 Sample St [1].\n\nSources:\n[1] Housekeeping — Taylor — 2026-04-19"
         self.assertEqual(format_reply_for_chat(plain), plain)
 
     def test_split_message_short_text_is_single_part(self) -> None:
@@ -272,7 +272,7 @@ class BridgeTest(unittest.TestCase):
                 },
                 messages={
                     "control-chat": [
-                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "bootstrap"},
+                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "Operator", "type": "TEXT", "text": "bootstrap"},
                     ],
                     "indexed-chat": [],
                 },
@@ -280,14 +280,14 @@ class BridgeTest(unittest.TestCase):
             bridge = ControlBridge(config, api_client=client)
             bridge.process_once()
             client.messages["control-chat"].append(
-                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "Remember that Addy is Adrienne Peña."}
+                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "Operator", "type": "TEXT", "text": "Remember that Addy is Jordan Lee."}
             )
             bridge.process_once()
             client.messages["control-chat"].append(
-                {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "Yes, save it."}
+                {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "Operator", "type": "TEXT", "text": "Yes, save it."}
             )
             bridge.process_once()
-            self.assertIn("Saved alias: Addy → Adrienne Peña.", client.sent_messages[-1][1])
+            self.assertIn("Saved alias: Addy → Jordan Lee.", client.sent_messages[-1][1])
 
     def test_unrelated_message_supersedes_pending_update(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -299,7 +299,7 @@ class BridgeTest(unittest.TestCase):
                 },
                 messages={
                     "control-chat": [
-                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "bootstrap"},
+                        {"id": "c1", "sortKey": "1", "timestamp": "2026-06-05T18:00:00Z", "senderName": "Operator", "type": "TEXT", "text": "bootstrap"},
                     ],
                     "indexed-chat": [],
                 },
@@ -307,7 +307,7 @@ class BridgeTest(unittest.TestCase):
             bridge = ControlBridge(config, api_client=client)
             bridge.process_once()
             client.messages["control-chat"].append(
-                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "Remember that Addy is Adrienne Peña."}
+                {"id": "c2", "sortKey": "2", "timestamp": "2026-06-05T18:01:00Z", "senderName": "Operator", "type": "TEXT", "text": "Remember that Addy is Jordan Lee."}
             )
             bridge.process_once()
 
@@ -330,11 +330,11 @@ class BridgeTest(unittest.TestCase):
             bridge_mod.ask_archive = canned_ask_archive
             try:
                 client.messages["control-chat"].append(
-                    {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "What is the weather like?"}
+                    {"id": "c3", "sortKey": "3", "timestamp": "2026-06-05T18:02:00Z", "senderName": "Operator", "type": "TEXT", "text": "What is the weather like?"}
                 )
                 bridge.process_once()
                 client.messages["control-chat"].append(
-                    {"id": "c4", "sortKey": "4", "timestamp": "2026-06-05T18:03:00Z", "senderName": "JBFLY", "type": "TEXT", "text": "yes"}
+                    {"id": "c4", "sortKey": "4", "timestamp": "2026-06-05T18:03:00Z", "senderName": "Operator", "type": "TEXT", "text": "yes"}
                 )
                 bridge.process_once()
             finally:

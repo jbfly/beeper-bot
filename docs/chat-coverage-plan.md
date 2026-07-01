@@ -22,8 +22,7 @@ prompt.
 
 ## 3. Tiers
 
-1. explicit allowlist (`indexed_chat_ids`): always synced; 43 chats as of
-   2026-06-12
+1. explicit allowlist (`indexed_chat_ids`): always synced; a user-configured set of chats
 2. auto-index recent (`auto_index_recent_days`, default 30): every
    non-noise chat with recent activity joins the sync set automatically.
    Noise = bare phone numbers, SMS short codes, archived chats

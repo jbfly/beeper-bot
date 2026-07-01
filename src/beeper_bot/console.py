@@ -347,7 +347,7 @@ svg { width:100%; height:72px; background:#061019; border:1px solid var(--line);
 <main>
   <section class="stack left">
     <div class="panel"><h2>Console chat</h2><div class="body chat-box">
-      <textarea id="question" placeholder="Ask the bot something. Example: What address did Adriana send?"></textarea>
+      <textarea id="question" placeholder="Ask the bot something. Example: What address did Taylor send?"></textarea>
       <div class="chat-actions"><button id="sendBtn">Run query</button><div class="small">Ctrl/Cmd+Enter sends</div></div>
       <div class="output" id="answerOut">No query yet.</div>
     </div></div>

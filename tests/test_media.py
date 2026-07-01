@@ -56,7 +56,7 @@ def _voice_message(idx: int, src_url: str) -> dict:
         "sortKey": str(idx),
         "timestamp": f"2026-06-{idx:02d}T10:00:00Z",
         "senderID": "u1",
-        "senderName": "Adrienne Peña",
+        "senderName": "Jordan Lee",
         "isSender": True,
         "type": "VOICE",
         "attachments": [
@@ -78,7 +78,7 @@ def _image_message(idx: int, src_url: str) -> dict:
         "sortKey": str(100 + idx),
         "timestamp": f"2026-06-{idx:02d}T11:00:00Z",
         "senderID": "u2",
-        "senderName": "Anna Bonewitz",
+        "senderName": "Alex Morgan",
         "type": "IMAGE",
         "attachments": [
             {
@@ -106,7 +106,7 @@ class MediaTestBase(unittest.TestCase):
         fake_image.write_bytes(b"fake-jpeg-data")
 
         client = FakeBeeperClient(
-            chats={"chat-a": {"title": "Adrienne Peña"}},
+            chats={"chat-a": {"title": "Jordan Lee"}},
             messages={
                 "chat-a": [
                     _voice_message(1, f"file://{fake_audio}"),
@@ -146,7 +146,7 @@ class MediaTest(MediaTestBase):
         response = search_archive(config, "olive oil")
         self.assertGreaterEqual(len(response.results), 1)
         self.assertEqual(response.results[0].message_id, "voice-1")
-        self.assertEqual(response.results[0].sender_name, "Adrienne Peña")
+        self.assertEqual(response.results[0].sender_name, "Jordan Lee")
 
     def test_image_description_is_indexed(self) -> None:
         config, client, tmpdir = self._config_with_media()
@@ -221,13 +221,13 @@ class MemoRequestTest(unittest.TestCase):
         self.assertEqual(req.duration_minutes, 21)
         self.assertFalse(req.mine_only)
 
-        req = parse_memo_request("Transcribe the last voice note from Adrienne")
+        req = parse_memo_request("Transcribe the last voice note from Jordan")
         self.assertEqual(req.action, "transcript")
-        self.assertEqual(req.sender_query, "Adrienne")
+        self.assertEqual(req.sender_query, "Jordan")
 
     def test_parse_ignores_non_memo_questions(self) -> None:
-        self.assertIsNone(parse_memo_request("What address did Adriana send?"))
-        self.assertIsNone(parse_memo_request("Summarize the Bom Sucesso chat"))
+        self.assertIsNone(parse_memo_request("What address did Taylor send?"))
+        self.assertIsNone(parse_memo_request("Summarize the Neighborhood chat"))
         self.assertIsNone(parse_memo_request("What did Anna say about the memo?"))
 
 
@@ -256,7 +256,7 @@ class MemoLookupTest(MediaTestBase):
             memory_state={},
         )
         self.assertEqual(response.answer_path, "direct")
-        self.assertIn("Voice memo from Adrienne Peña", response.answer)
+        self.assertIn("Voice memo from Jordan Lee", response.answer)
         self.assertIn("olive oil", response.answer)
         self.assertNotIn("[voice memo transcript]", response.answer)
 
