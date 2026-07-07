@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from beeper_bot.config import AppConfig, CloudLlmConfig, LlmConfig
-from beeper_bot.llm import LlmError, OpenAiCompatLlmClient, _require_local_base_url
+from beeper_bot.llm import LlmError, OpenAiCompatLlmClient, _require_local_base_url, anthropic_messages
 
 
 def _config(**cloud) -> AppConfig:
@@ -90,6 +90,59 @@ class RoutingTest(unittest.TestCase):
         cfg = _config(base_url="https://api.openai.com/v1", model="gpt", api_key_env="MISSINGKEY", purposes=["planner"])
         with self.assertRaises(LlmError):
             self.client._post_chat(cfg, [{"role": "user", "content": "hi"}], purpose="planner")
+
+
+class AnthropicMessagesTest(unittest.TestCase):
+    def _stub(self, body: bytes):
+        import beeper_bot.llm as llm
+
+        recorded = {}
+
+        class FakeResp:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return body
+
+        def fake_urlopen(req, timeout=0):
+            recorded["url"] = req.full_url
+            recorded["headers"] = dict(req.headers)
+            recorded["body"] = req.data
+            return FakeResp()
+
+        return llm, fake_urlopen, recorded
+
+    def test_gated_purpose_hits_native_endpoint(self) -> None:
+        import json as _json
+        import os
+        os.environ["ANTHKEY"] = "sk-ant-test"
+        cfg = _config(base_url="https://api.anthropic.com", model="claude-opus-4-8", api_key_env="ANTHKEY", purposes=["music"])
+        llm, fake, rec = self._stub(b'{"content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}')
+        orig = llm.request.urlopen
+        llm.request.urlopen = fake
+        try:
+            result = anthropic_messages(cfg, [{"role": "user", "content": "yo"}], system="be brief", tools=[{"name": "t", "input_schema": {"type": "object"}}], purpose="music")
+        finally:
+            llm.request.urlopen = orig
+        self.assertEqual(rec["url"], "https://api.anthropic.com/v1/messages")
+        self.assertEqual(rec["headers"].get("X-api-key"), "sk-ant-test")
+        self.assertEqual(rec["headers"].get("Anthropic-version"), "2023-06-01")
+        sent = _json.loads(rec["body"])
+        self.assertEqual(sent["system"], "be brief")
+        self.assertEqual(sent["thinking"], {"type": "adaptive"})
+        self.assertEqual(len(sent["tools"]), 1)
+        self.assertEqual(result["stop_reason"], "end_turn")
+
+    def test_non_opted_purpose_is_refused(self) -> None:
+        cfg = _config(base_url="https://api.anthropic.com", model="claude-opus-4-8", api_key_env="ANTHKEY", purposes=["planner"])
+        with self.assertRaises(LlmError):
+            anthropic_messages(cfg, [{"role": "user", "content": "yo"}], purpose="music")
+
+    def test_missing_key_errors(self) -> None:
+        import os
+        os.environ.pop("NOKEY", None)
+        cfg = _config(base_url="https://api.anthropic.com", model="claude-opus-4-8", api_key_env="NOKEY", purposes=["music"])
+        with self.assertRaises(LlmError):
+            anthropic_messages(cfg, [{"role": "user", "content": "yo"}], purpose="music")
 
 
 if __name__ == "__main__":

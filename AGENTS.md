@@ -82,6 +82,7 @@ n_tokens`). The 12B profile uses `UBATCH_SIZE=512`, `IMAGE_MAX_TOKENS=280`.
 | `catchup.py` | per-chat & multi-chat digests, fuzzy chat resolution, natural-language digest parsing |
 | `media.py` | attachment fetch/transcribe/describe, derived-text storage, voice-memo lookup |
 | `bridge.py` | control-chat serve loop, command parsing, reply formatting + multi-message splitting |
+| `music.py` | the "music" control chat: cloud-LLM (Anthropic, purpose `music`) tool loop over music-library-project scripts — now-playing, fixer queue, spectral diagnosis; files changes into the fixer queue, never touches the library |
 | `evals.py` | offline eval harness (§7); answer-path validity |
 | `tracing.py` | structured trace events → `traces`/`trace_events` tables |
 | `console.py` | local operator web console (telemetry); `beeper-bot console` |
@@ -267,7 +268,7 @@ to a control chat (default `main`) — the outbound half of the event bus. Any
 homelab box: `ssh venus beeper-bot notify "backup failed" --chat main`.
 
 **Control chat:** plain text = `/ask`; also `/find`, `/catchup <chat>`,
-`/index <chat>`, `/music <issue>`, `/status`, `/reindex`, `/help`. Natural
+`/index <chat>`, `/music <issue>`, `/music-status`, `/status`, `/reindex`, `/help`. Natural
 language also routes: "summarize the X chat(s)", "what is happening in X",
 configured chat-set names such as "Neighborhood" or "Sample Festival",
 "transcript/summary of my last voice memo", "remember that X is Y"
@@ -282,6 +283,17 @@ a `persona` (literal system directive threaded into `ask_archive(persona=…)`),
 and an `allowed_commands` filter. `beeper.control_chat_id` remains an implicit
 `main` chat, so single-chat configs are unchanged. This is the on-ramp the
 translation and Odoo plans depend on (see their docs).
+
+**The music chat** (control chat named `music`) is the first purpose chat with
+its own brain: free text there runs a **cloud-LLM tool loop** (`music.py`,
+Anthropic Messages API via `llm.anthropic_messages`, purpose `"music"` in
+`[cloud_llm].purposes`) over the music-library-project scripts — now-playing,
+fixer-queue list/file/resolve, spectral track diagnosis (docker exec into
+`music-beets`), Navidrome + beets search. It never modifies the library: write
+intents become fixer-queue entries drained by that repo's gated agent, and
+`fixer_capture.py` pings the chat back (via `beeper-bot notify`) when issues
+resolve or the drain needs an answer. `/music <issue>` (direct capture) and
+`/music-status` (queue summary) work without the cloud tier.
 
 ---
 

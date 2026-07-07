@@ -251,6 +251,8 @@ class ControlBridge:
             return RemoteCommand("index", stripped[len("/index "):].strip())
         if stripped.startswith("/catchup "):
             return RemoteCommand("catchup", stripped[len("/catchup "):].strip())
+        if stripped == "/music-status":
+            return RemoteCommand("music-status")
         if stripped == "/music" or stripped.startswith("/music "):
             return RemoteCommand("music", stripped[len("/music"):].strip())
         return RemoteCommand("ask", stripped)
@@ -375,7 +377,8 @@ class ControlBridge:
         return (
             f"{self.config.bridge.reply_prefix}Commands: plain text or /ask <question> = answer from local archive, "
             f"/find <query> = search archive, /catchup <chat-or-set> = digest of a chat or configured chat set since last catch-up, "
-            f"/index <chat> = add a Beeper chat to the archive, /music <issue> = log a music-library issue (tags what's playing now), /status = runtime status, /reindex = force sync, /help = this help."
+            f"/index <chat> = add a Beeper chat to the archive, /music <issue> = log a music-library issue (tags what's playing now), "
+            f"/music-status = fixer queue summary, /status = runtime status, /reindex = force sync, /help = this help."
         )
 
     def _status_text(self) -> str:
@@ -411,14 +414,46 @@ class ControlBridge:
         import subprocess
         try:
             proc = subprocess.run(
-                ["/usr/bin/python3",
-                 "/home/jbfly/git/music-library-project/scripts/fixer_capture.py", text],
+                [self.config.music.host_python,
+                 str(self.config.music.project_root / "scripts" / "fixer_capture.py"), text],
                 capture_output=True, text=True, timeout=45,
             )
             msg = (proc.stdout or proc.stderr or "").strip() or f"capture exited rc={proc.returncode}"
         except Exception as exc:
             msg = f"capture failed: {exc}"
         return self._reply(f"{self.config.bridge.reply_prefix}{msg}")
+
+    def _handle_music_status(self) -> str:
+        """Chat-friendly fixer-queue summary (open issues, pending questions, last resolutions)."""
+        import subprocess
+        script = str(self.config.music.project_root / "scripts" / "fixer_capture.py")
+        try:
+            proc = subprocess.run(
+                [self.config.music.host_python, script, "--status"],
+                capture_output=True, text=True, timeout=15,
+            )
+            msg = (proc.stdout or proc.stderr or "").strip() or f"status exited rc={proc.returncode}"
+        except Exception as exc:
+            msg = f"status failed: {exc}"
+        return self._reply(f"{self.config.bridge.reply_prefix}{msg}")
+
+    def _handle_music_chat(self, text: str) -> str:
+        """Free text in the music chat: the cloud-LLM tool loop over the library.
+
+        Falls back to command-only guidance when the cloud tier is unavailable —
+        never routes music tool loops to the local model (no tool support there).
+        """
+        from .music import music_chat_turn
+        turns = recent_control_turns(self.config, limit=self.config.music.history_turns, chat_id=self.control_chat_id)
+        try:
+            reply = music_chat_turn(self.config, text, turns=turns)
+        except LlmError as exc:
+            log(f"music chat llm error: {exc}")
+            return self._reply(
+                f"{self.config.bridge.reply_prefix}The music brain is offline ({exc.__class__.__name__}). "
+                "/music <text> still captures issues and /music-status still works."
+            )
+        return self._reply(f"{self.config.bridge.reply_prefix}{reply}")
 
     def _handle_command(self, command: RemoteCommand) -> str | None:
         if command.mode == "ignore":
@@ -457,6 +492,10 @@ class ControlBridge:
                 raise
             return self._reply(f"{self.config.bridge.reply_prefix}{format_catchup_result(result)}")
         if command.mode == "ask":
+            # The music chat's free text is a different animal: a cloud tool
+            # loop over the music library, not archive Q&A.
+            if self._active is not None and self._active.name == "music":
+                return self._handle_music_chat(command.text)
             pending = latest_pending_update(self.config)
             if pending and looks_like_confirmation(command.text):
                 return self._reply(f"{self.config.bridge.reply_prefix}{apply_pending_update(self.config, pending)}")
@@ -492,6 +531,8 @@ class ControlBridge:
             return self._reply(f"{self.config.bridge.reply_prefix}{rendered}")
         if command.mode == "music":
             return self._handle_music(command.text)
+        if command.mode == "music-status":
+            return self._handle_music_status()
         raise RuntimeError(f"Unknown command mode: {command.mode}")
 
     def _command_allowed(self, chat: ControlChatConfig, mode: str) -> bool:

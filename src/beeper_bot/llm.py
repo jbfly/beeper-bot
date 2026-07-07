@@ -102,6 +102,67 @@ def _require_local_base_url(base_url: str) -> None:
     raise LlmError(f"Local-tier LLM base URL must be loopback or a private LAN address: {base_url}")
 
 
+def anthropic_messages(
+    config: AppConfig,
+    messages: list[dict],
+    *,
+    system: str = "",
+    tools: list[dict] | None = None,
+    max_tokens: int | None = None,
+    purpose: str = "music",
+    trace_phase: str = "music",
+) -> dict:
+    """Native Anthropic Messages API call (tool use + adaptive thinking).
+
+    Only purposes explicitly opted into [cloud_llm].purposes may use this —
+    same privacy gate as the OpenAI-compat cloud route. There is deliberately
+    no local fallback: the local tier has no tool-calling support, and a
+    purpose that needs this call shouldn't silently degrade.
+
+    Returns the parsed response dict; callers read `content` (blocks) and
+    `stop_reason` ("tool_use" means execute the tool_use blocks and call again).
+    """
+    cloud = getattr(config, "cloud_llm", None)
+    if not cloud or not cloud.base_url or purpose not in cloud.purposes:
+        raise LlmError(f"purpose '{purpose}' is not opted into the cloud LLM tier ([cloud_llm].purposes)")
+    api_key = cloud.api_key()
+    if not api_key:
+        raise LlmError(f"cloud LLM tier for purpose '{purpose}' needs {cloud.api_key_env} set")
+    payload: dict = {
+        "model": cloud.model.strip(),
+        "max_tokens": max_tokens or config.llm.max_output_tokens,
+        "messages": messages,
+        "thinking": {"type": "adaptive"},
+    }
+    if system:
+        payload["system"] = system
+    if tools:
+        payload["tools"] = tools
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+    }
+    url = f"{cloud.base_url.rstrip('/')}/v1/messages"
+    trace_event(f"{trace_phase}.request", {"url": url, "payload": {k: v for k, v in payload.items() if k != "messages"}, "purpose": purpose})
+    req = request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    try:
+        with request.urlopen(req, timeout=config.llm.timeout_seconds) as resp:
+            response_body = resp.read().decode("utf-8")
+    except error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")
+        raise LlmError(f"Anthropic API failed: HTTP {exc.code} {body_text}") from exc
+    except error.URLError as exc:
+        raise LlmError(f"Anthropic API failed: {exc}") from exc
+    try:
+        parsed = json.loads(response_body)
+        parsed["content"]  # shape check
+        trace_event(f"{trace_phase}.response", {"stop_reason": parsed.get("stop_reason"), "usage": parsed.get("usage")})
+        return parsed
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise LlmError("Anthropic API returned an unexpected response") from exc
+
+
 class OpenAiCompatLlmClient:
     def _post_chat(
         self,

@@ -1,13 +1,14 @@
 [Unit]
-Description=beeper-bot control chat service
+Description=beeper-bot control chat service (venus, matrix transport)
 After=network.target
 
 [Service]
 Type=simple
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=%h/git/beeper-bot/src
+# Secrets (ANTHROPIC_API_KEY for the music chat); '-' = optional if absent.
+EnvironmentFile=-%h/.config/beeper-bot/env
 WorkingDirectory=%h/git/beeper-bot
-ExecStart=/usr/bin/python3 -m beeper_bot --config %h/.config/beeper-bot/config.toml serve
+ExecStart=%h/git/beeper-bot/.venv312/bin/beeper-bot --config %h/.config/beeper-bot/config.toml serve
 Restart=on-failure
 RestartSec=2
 

@@ -26,6 +26,28 @@ max_input_snippets = 10
 max_output_tokens = 300
 temperature = 0.1
 
+# Optional off-network LLM tier. Only purposes listed here leave the LAN; everything
+# that ingests chat content (answer/digest/media/memo) stays local regardless.
+# The API key is read from the named env var, never stored here (for the systemd
+# unit, put it in an EnvironmentFile, e.g. ~/.config/beeper-bot/env, chmod 600).
+# base_url "https://api.anthropic.com" uses the native Messages API (tool use);
+# any other host is treated as an OpenAI-compatible /chat/completions endpoint.
+# [cloud_llm]
+# base_url = "https://api.anthropic.com"
+# model = "claude-opus-4-8"
+# api_key_env = "ANTHROPIC_API_KEY"
+# purposes = ["music"]
+
+# The music-library chat's tool loop (control chat named "music"; requires
+# "music" in [cloud_llm].purposes). Paths are for the pipeline host (venus).
+# [music]
+# project_root = "/home/jbfly/git/music-library-project"
+# host_python = "/usr/bin/python3"
+# docker_container = "music-beets"
+# max_tool_iterations = 6
+# max_output_tokens = 2000
+# history_turns = 12
+
 [bridge]
 reply_prefix = "[BEEPER-BOT] "
 max_reply_chars = 3500
@@ -52,7 +74,7 @@ auto_derive_per_cycle = 3
 # persona:          a literal system directive prepended to free-text answers in
 #                   this chat (empty = default assistant).
 # allowed_commands: restrict which command modes this chat honors (mode names:
-#                   ask, find, catchup, index, music, status, help, reindex).
+#                   ask, find, catchup, index, music, music-status, status, help, reindex).
 #                   Empty/omitted = all commands. help/status are always allowed.
 #
 # [control_chats.main]
@@ -65,6 +87,12 @@ auto_derive_per_cycle = 3
 # [control_chats.cams]
 # chat_id = "!yourcamsroom:beeper.local"
 # allowed_commands = ["status"]   # a quiet feed chat: ignore ad-hoc questions
+#
+# A control chat named "music" is special: its free text runs a cloud-LLM tool
+# loop over the music-library-project scripts (see [music] + [cloud_llm] below).
+# [control_chats.music]
+# chat_id = "!yourmusicroom:beeper.com"
+# allowed_commands = ["music", "music-status", "ask", "help", "status"]
 
 # Outbound notifications: any homelab script can post a fire-and-forget message
 # to a control chat with `beeper-bot notify "text" [--chat <name>]`. It queues the

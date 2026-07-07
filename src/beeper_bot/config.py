@@ -121,6 +121,22 @@ class ControlChatConfig:
 
 
 @dataclass(slots=True)
+class MusicConfig:
+    """Settings for the music-library chat (see music.py).
+
+    Free text in the control chat named "music" runs a cloud-LLM tool loop over
+    the music-library-project scripts on this host. Requires "music" in
+    [cloud_llm].purposes; without it the music chat falls back to command-only.
+    """
+    project_root: Path = Path("/home/jbfly/git/music-library-project")
+    host_python: str = "/usr/bin/python3"
+    docker_container: str = "music-beets"
+    max_tool_iterations: int = 6
+    max_output_tokens: int = 2000
+    history_turns: int = 12
+
+
+@dataclass(slots=True)
 class SecurityConfig:
     allow_web_search: bool = False
     log_raw_messages: bool = False
@@ -137,6 +153,7 @@ class AppConfig:
     media: MediaConfig = field(default_factory=MediaConfig)
     chat_sets: dict[str, ChatSetConfig] = field(default_factory=dict)
     control_chats: dict[str, ControlChatConfig] = field(default_factory=dict)
+    music: MusicConfig = field(default_factory=MusicConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
 
     @property
@@ -285,6 +302,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
     media_raw = _get_table(raw, "media")
     chat_sets_raw = _get_table(raw, "chat_sets")
     control_chats_raw = _get_table(raw, "control_chats")
+    music_raw = _get_table(raw, "music")
     security_raw = _get_table(raw, "security")
 
     config = AppConfig(
@@ -340,6 +358,14 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         ),
         chat_sets=_chat_sets_value(chat_sets_raw),
         control_chats=_control_chats_value(control_chats_raw),
+        music=MusicConfig(
+            project_root=_path_value(music_raw, "project_root", Path("/home/jbfly/git/music-library-project")),
+            host_python=str(music_raw.get("host_python", "/usr/bin/python3")),
+            docker_container=str(music_raw.get("docker_container", "music-beets")),
+            max_tool_iterations=_int_value(music_raw, "max_tool_iterations", 6),
+            max_output_tokens=_int_value(music_raw, "max_output_tokens", 2000),
+            history_turns=_int_value(music_raw, "history_turns", 12),
+        ),
         security=SecurityConfig(
             allow_web_search=_bool_value(security_raw, "allow_web_search", False),
             log_raw_messages=_bool_value(security_raw, "log_raw_messages", False),
