@@ -17,3 +17,5 @@ eval/generated/*.json
 *.sqlite3-*
 config.toml
 token
+.venv312/
+uv.lock

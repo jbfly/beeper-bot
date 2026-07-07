@@ -256,6 +256,12 @@ split into multiple `(i/n)` messages when over `max_reply_chars`.
 - **systemd user units:** `beeper-bot.service` (the `serve` loop),
   `beeper-bot-console.service` (operator console). `systemctl --user
   restart beeper-bot.service` after code changes that affect the live bot.
+- **Where the live bot runs (2026-07-07):** on **venus** via the matrix-nio
+  transport (`transport = "matrix"`), from the `~/git/beeper-bot/.venv312`
+  Python-3.12 venv, alongside the self-hosted bridges. It uses **alpha's GPU
+  model over the LAN** (`[llm] base_url = http://192.168.1.11:8090/v1`). Beeper
+  Desktop on alpha is no longer required. Full story + deploy/runbook:
+  `docs/self-hosted-bridges-and-matrix-migration.md`.
 - The `serve` loop polls the control chat every `poll_seconds`, runs a full
   background sync every `sync_interval_seconds` (with media auto-derivation),
   and uses a fast "quick sync" before answering so questions don't block on

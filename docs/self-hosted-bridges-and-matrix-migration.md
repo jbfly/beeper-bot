@@ -244,15 +244,37 @@ Done and verified on venus:
    *Beeper-Desktop* dependency on alpha; the *model* dependency on alpha is
    intentional and stays.
 
-### Final cutover steps (do WITH the owner)
+### ✅ CUTOVER COMPLETE (2026-07-07) — the live bot now runs on venus
 
-1. Re-derive `indexed_chat_ids` for the venus config (approved mapping) and run a
-   full `sync` to build the archive.
-2. Make alpha's `:8090` reachable from venus (tunnel or LAN bind).
-3. **Stop alpha's `beeper-bot.service`** before starting venus's — both poll the
-   same control chat, so running both = double answers + cursor fights.
-4. `systemctl --user enable --now beeper-bot.service` on venus; retire the
-   Beeper-Desktop-on-alpha dependency (AGENTS.md §2 runtime dep #1).
+- `indexed_chat_ids` remapped (17 by title; 10 left for the owner to pick).
+- alpha's `:8090` LAN-bound; venus answers via it.
+- alpha's `beeper-bot.service` **stopped + removed** (it was a symlinked/linked
+  unit, so `disable` deleted it — restore from the unit template in git history if
+  you ever want alpha as a fallback). No stray process on alpha.
+- venus `beeper-bot.service` **enabled + running**. First poll seeded the control
+  cursor to "now" (bridge does this automatically when the cursor is unset), so it
+  does not re-answer old messages. Auto-index pulled the working set to ~104 chats
+  / ~2100 messages.
+
+**Live topology now:** venus runs the self-hosted bridges **and** the bot
+(matrix-nio transport → local archive → planner/retrieval → synthesis on alpha's
+LAN model). alpha only provides the GPU model over the LAN. Beeper Desktop on
+alpha is **no longer required** for the bot (AGENTS.md §2 runtime dep #1 is now
+"model host," not "Beeper Desktop").
+
+### Deploy notes for future agents
+
+- venus venv: `~/git/beeper-bot/.venv312` (Python 3.12). Recreate with
+  `uv venv --python 3.12 .venv312 && uv pip install --python .venv312/bin/python -e '.[matrix]'`.
+- venus config: `~/.config/beeper-bot/config.toml` (`transport="matrix"`,
+  `[llm] base_url=http://192.168.1.11:8090/v1`).
+- One-shot per fresh store: `beeper-bot matrix-restore-keys` (recovery key via
+  `$BEEPER_RECOVERY_KEY`) to decrypt history.
+- Service: `systemctl --user {status,restart} beeper-bot.service`;
+  `journalctl --user -u beeper-bot.service -f`. Linger is on.
+- Still owner TODO: pick the 10 unmapped chats (Lorene, Calvin, John A Bonewitz,
+  Ben Wiegelmann, Ellise Hannigan, Big I Psy, Chase Pratt, Adrienne Pena,
+  #wordle, Bom Sucesso Community); decide which LLM purposes (if any) go cloud.
 
 Until these land, the bot stays on alpha via the Desktop API (default toggle).
 Nothing about the self-hosted bridges forces a bot change — the Desktop API keeps
