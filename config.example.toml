@@ -3,9 +3,13 @@
 api_base = "http://127.0.0.1:23373/v1"
 token_file = "~/.config/beeper-bot/token"
 control_chat_id = ""
+# indexed_chat_ids is an optional pin list (always index these, even if quiet).
+# You usually don't need it: auto-index below covers every recently-active chat.
 indexed_chat_ids = []
-auto_index_recent_days = 0
-auto_index_max_chats = 100
+# Auto-index every non-noise chat active in the last N days (0 disables). This is
+# the main knob for coverage — set it high for a broad index of your real chats.
+auto_index_recent_days = 90
+auto_index_max_chats = 400
 poll_seconds = 5
 sync_interval_seconds = 300
 history_fetch_limit = 500
