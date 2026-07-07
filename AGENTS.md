@@ -161,14 +161,23 @@ http_timeout_seconds = 30
 [archive]
 path = "~/.local/state/beeper-bot/archive.sqlite3"
 
-[llm]
-base_url = "http://127.0.0.1:8090/v1"
+[llm]   # the LOCAL/private tier — must be loopback or a private LAN address
+base_url = "http://127.0.0.1:8090/v1"   # e.g. 192.168.x when the model is on another box (alpha)
 model = "gemma4-google-12b-q6_k-local"
 # optional separate planner endpoint/model; temperatures; token caps
 planner_temperature = 0.0
 max_input_snippets = 5
 max_output_tokens = 250
 temperature = 0.1
+
+# Optional off-network tier. Only purposes listed here leave the LAN; everything
+# that ingests chat content (answer/digest/media/memo) stays local regardless.
+# The API key is read from the named env var, never stored in config.
+[cloud_llm]
+base_url = "https://api.openai.com/v1"   # any OpenAI-compatible endpoint
+model = "gpt-5"
+api_key_env = "OPENAI_API_KEY"
+purposes = ["planner"]                    # empty/omitted = everything stays local
 
 [bridge]
 reply_prefix = "[BEEPER-BOT] "

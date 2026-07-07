@@ -228,15 +228,21 @@ Done and verified on venus:
    on `auto_index_recent_days` to auto-index active chats. This is an owner
    curation decision (which chats to archive), so propose a title→new-id mapping
    for approval rather than guessing.
-2. **LLM stays on alpha (owner decision).** The local GPU model lives on **alpha**
-   and is *not* being moved to venus. Plan: venus's beeper-bot points its
-   **chat-history** inference (ask/planner/catchup/summaries + voice/image
-   derivation — all private chat content) at **alpha's `:8090`** over the LAN
-   (SSH tunnel keeps the config's `127.0.0.1:8090`, or bind alpha's llama-serve to
-   the LAN). Control/actuator features (/music, catcam, etc.) are intended to use
-   **cloud** models — that per-purpose LLM routing is a future change, not built
-   yet. So moving the bridges off Beeper's cloud removed the *Beeper-Desktop*
-   dependency on alpha; the *model* dependency on alpha is intentional and stays.
+2. **LLM stays on alpha (owner decision) — DONE + routing built.** The local GPU
+   model lives on **alpha** and is not moving. alpha's `llama_proxy.py` is now
+   bound to the LAN (`~/.config/llama-serve/settings.env`:
+   `LLAMA_PROXY_HOST=0.0.0.0`; its admin endpoints were already loopback-gated, so
+   only inference is exposed; no firewall in the way). venus's config points
+   `[llm] base_url` at `http://192.168.1.11:8090/v1` and **answers end-to-end**
+   over the LAN. `_require_local_base_url` was widened from loopback-only to also
+   allow private/LAN addresses (still rejects public), so the local tier can't
+   leak to the internet. **Per-purpose routing is built** (`[cloud_llm]` +
+   `purpose=` on each call): chat-content purposes (answer/digest/media/memo) are
+   pinned local; opt a purpose into cloud via `[cloud_llm] purposes = [...]`.
+   Choosing *which* purposes go cloud is the owner's privacy call and isn't set
+   yet (default: all local). So moving the bridges off Beeper's cloud removed the
+   *Beeper-Desktop* dependency on alpha; the *model* dependency on alpha is
+   intentional and stays.
 
 ### Final cutover steps (do WITH the owner)
 
