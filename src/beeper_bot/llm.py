@@ -78,7 +78,14 @@ class QueryPlannerClient(Protocol):
     def plan_query(self, config: AppConfig, question: str, catalog: SearchCatalog, graph: PersonGraph) -> QueryPlan: ...
 
 
-def _require_loopback_base_url(base_url: str) -> None:
+def _require_local_base_url(base_url: str) -> None:
+    """Guarantee the *local* LLM tier never leaves your own hardware.
+
+    Allows loopback and RFC1918/link-local hosts (e.g. the model on alpha at
+    192.168.x over the LAN) but rejects public addresses, so private chat
+    content can't accidentally be sent to an internet endpoint on this tier.
+    The cloud tier (see routing) is the only path allowed off-network.
+    """
     parsed = parse.urlsplit(base_url)
     hostname = parsed.hostname
     if not hostname:
@@ -86,11 +93,12 @@ def _require_loopback_base_url(base_url: str) -> None:
     if hostname == "localhost":
         return
     try:
-        if ipaddress.ip_address(hostname).is_loopback:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_loopback or ip.is_private or ip.is_link_local:
             return
     except ValueError:
         pass
-    raise LlmError(f"LLM base URL must be loopback for MVP: {base_url}")
+    raise LlmError(f"Local-tier LLM base URL must be loopback or a private LAN address: {base_url}")
 
 
 class OpenAiCompatLlmClient:
@@ -104,10 +112,25 @@ class OpenAiCompatLlmClient:
         model: str | None = None,
         temperature: float | None = None,
         trace_phase: str = "llm",
+        purpose: str = "answer",
     ) -> str:
-        target_base_url = (base_url or config.llm.base_url).strip()
-        target_model = (model or config.llm.model).strip()
-        _require_loopback_base_url(target_base_url)
+        # Route to the cloud tier only for purposes explicitly opted in; every
+        # other call stays on the local tier, which is pinned to your own
+        # hardware. Purposes that ingest others' chat content (answer, digest,
+        # media, memo) must never be routed to cloud.
+        headers = {"Content-Type": "application/json"}
+        cloud = getattr(config, "cloud_llm", None)
+        if cloud and cloud.base_url and purpose in cloud.purposes:
+            api_key = cloud.api_key()
+            if not api_key:
+                raise LlmError(f"cloud LLM tier for purpose '{purpose}' needs {cloud.api_key_env} set")
+            target_base_url = cloud.base_url.strip()
+            target_model = (cloud.model or config.llm.model).strip()
+            headers["Authorization"] = f"Bearer {api_key}"
+        else:
+            target_base_url = (base_url or config.llm.base_url).strip()
+            target_model = (model or config.llm.model).strip()
+            _require_local_base_url(target_base_url)
         payload = {
             "model": target_model,
             "messages": messages,
@@ -116,8 +139,8 @@ class OpenAiCompatLlmClient:
         }
         body = json.dumps(payload).encode("utf-8")
         url = f"{target_base_url.rstrip('/')}/chat/completions"
-        trace_event(f"{trace_phase}.request", {"url": url, "payload": payload})
-        req = request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        trace_event(f"{trace_phase}.request", {"url": url, "payload": payload, "purpose": purpose})
+        req = request.Request(url, data=body, headers=headers, method="POST")
         try:
             with request.urlopen(req, timeout=config.llm.timeout_seconds) as resp:
                 response_body = resp.read().decode("utf-8")
@@ -182,6 +205,7 @@ class OpenAiCompatLlmClient:
             model=config.llm.planner_model or None,
             temperature=planner_temperature,
             trace_phase="planner",
+            purpose="planner",
         )
         return parse_query_plan(raw, question)
 
@@ -515,6 +539,7 @@ def plan_archive_query(
                 model=config.llm.planner_model or None,
                 temperature=planner_temperature,
                 trace_phase="planner",
+                purpose="planner",
             )
             trace_event("planner.raw_output", {"raw_text": raw})
             plan = parse_query_plan(raw, question)

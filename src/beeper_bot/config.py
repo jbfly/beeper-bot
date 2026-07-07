@@ -40,6 +40,24 @@ class BeeperConfig:
 
 
 @dataclass(slots=True)
+class CloudLlmConfig:
+    """Optional off-network LLM tier for non-private tasks (opt-in per purpose).
+
+    Empty `purposes` (the default) means every call stays on the local tier, so
+    adding this section is harmless until you name purposes to route out.
+    """
+    base_url: str = ""
+    model: str = ""
+    api_key_env: str = "OPENAI_API_KEY"
+    purposes: list[str] = field(default_factory=list)
+
+    def api_key(self) -> str:
+        import os
+
+        return os.environ.get(self.api_key_env, "").strip()
+
+
+@dataclass(slots=True)
 class ArchiveConfig:
     path: Path = DEFAULT_DB_PATH
 
@@ -93,6 +111,7 @@ class AppConfig:
     beeper: BeeperConfig = field(default_factory=BeeperConfig)
     archive: ArchiveConfig = field(default_factory=ArchiveConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
+    cloud_llm: CloudLlmConfig = field(default_factory=CloudLlmConfig)
     bridge: BridgeConfig = field(default_factory=BridgeConfig)
     media: MediaConfig = field(default_factory=MediaConfig)
     chat_sets: dict[str, ChatSetConfig] = field(default_factory=dict)
@@ -197,6 +216,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
     beeper_raw = _get_table(raw, "beeper")
     archive_raw = _get_table(raw, "archive")
     llm_raw = _get_table(raw, "llm")
+    cloud_llm_raw = _get_table(raw, "cloud_llm")
     bridge_raw = _get_table(raw, "bridge")
     media_raw = _get_table(raw, "media")
     chat_sets_raw = _get_table(raw, "chat_sets")
@@ -235,6 +255,12 @@ def load_config(path: Path | str | None = None) -> AppConfig:
             max_input_snippets=_int_value(llm_raw, "max_input_snippets", 10),
             max_output_tokens=_int_value(llm_raw, "max_output_tokens", 300),
             temperature=_float_value(llm_raw, "temperature", 0.1),
+        ),
+        cloud_llm=CloudLlmConfig(
+            base_url=str(cloud_llm_raw.get("base_url", "") or ""),
+            model=str(cloud_llm_raw.get("model", "") or ""),
+            api_key_env=str(cloud_llm_raw.get("api_key_env", "OPENAI_API_KEY") or "OPENAI_API_KEY"),
+            purposes=_str_list_value(cloud_llm_raw, "purposes", []),
         ),
         bridge=BridgeConfig(
             reply_prefix=str(bridge_raw.get("reply_prefix", DEFAULT_REPLY_PREFIX)),
