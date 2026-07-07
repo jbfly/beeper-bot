@@ -203,21 +203,50 @@ went from 0 readable messages to full history — 342 sessions recovered):
 
 **The transport is now feature-complete.** What's left is operational cutover.
 
-### ⛔ Still to do — operational cutover on venus
+### Cutover status (2026-07-07) — transport side done on venus
 
-1. Create a **Python 3.12** venv with `matrix-nio[e2e]` (3.13/3.14 can't build
-   python-olm), install the bot there.
-2. Run `beeper-bot matrix-restore-keys` once (recovery key via
-   `$BEEPER_RECOVERY_KEY`).
-3. Set `[beeper] transport = "matrix"` in the venus config; run a full
-   `beeper-bot sync` and confirm the archive builds from Matrix (spot-check a
-   chat with history).
-4. Add a `beeper-bot.service` systemd user unit next to the bridge units; then
-   retire the Beeper-Desktop-on-alpha dependency (AGENTS.md §2 runtime dep #1).
+Done and verified on venus:
+- **Python 3.12 venv** at `~/git/beeper-bot/.venv312` with `matrix-nio[e2e]` +
+  `pycryptodome` (3.13/3.14 can't build python-olm), bot installed editable.
+- **`~/.config/beeper-bot/config.toml`** on venus = alpha's config + `transport =
+  "matrix"`.
+- **Key backup restored** into the venus store (`beeper-bot matrix-restore-keys`,
+  342 sessions).
+- **Archive builds from Matrix**: `beeper-bot sync --chat-id <current-room>`
+  stored 48 real decrypted messages (La Familia) with FTS populated.
+- **systemd unit** `~/.config/systemd/user/beeper-bot.service` created pointing at
+  `.venv312` — **left disabled/stopped** (see gating below).
 
-This last step changes the production deployment (moves the live bot from alpha
-to venus), so it should be done deliberately with the owner rather than
-unattended.
+### Two blockers before the serve loop can move to venus
+
+1. **`indexed_chat_ids` are 100% stale.** The 2026-07-07 incident deleted the old
+   cloud-bridge rooms, so *every* room ID in alpha's config is dead on the
+   self-hosted-bridge account (a full `sync` stored 0). The same conversations
+   exist under **new** IDs via the sh-* bridges. `sync_chats` was made resilient
+   (skips unknown rooms), but the list must be **re-derived** — match the old
+   config's name comments against current room titles (`fetch_all_chats`), or lean
+   on `auto_index_recent_days` to auto-index active chats. This is an owner
+   curation decision (which chats to archive), so propose a title→new-id mapping
+   for approval rather than guessing.
+2. **LLM stays on alpha (owner decision).** The local GPU model lives on **alpha**
+   and is *not* being moved to venus. Plan: venus's beeper-bot points its
+   **chat-history** inference (ask/planner/catchup/summaries + voice/image
+   derivation — all private chat content) at **alpha's `:8090`** over the LAN
+   (SSH tunnel keeps the config's `127.0.0.1:8090`, or bind alpha's llama-serve to
+   the LAN). Control/actuator features (/music, catcam, etc.) are intended to use
+   **cloud** models — that per-purpose LLM routing is a future change, not built
+   yet. So moving the bridges off Beeper's cloud removed the *Beeper-Desktop*
+   dependency on alpha; the *model* dependency on alpha is intentional and stays.
+
+### Final cutover steps (do WITH the owner)
+
+1. Re-derive `indexed_chat_ids` for the venus config (approved mapping) and run a
+   full `sync` to build the archive.
+2. Make alpha's `:8090` reachable from venus (tunnel or LAN bind).
+3. **Stop alpha's `beeper-bot.service`** before starting venus's — both poll the
+   same control chat, so running both = double answers + cursor fights.
+4. `systemctl --user enable --now beeper-bot.service` on venus; retire the
+   Beeper-Desktop-on-alpha dependency (AGENTS.md §2 runtime dep #1).
 
 Until these land, the bot stays on alpha via the Desktop API (default toggle).
 Nothing about the self-hosted bridges forces a bot change — the Desktop API keeps
