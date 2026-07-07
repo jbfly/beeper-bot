@@ -336,6 +336,53 @@ class MatrixTransport:
         self._submit(self._a_send_message(chat_id, text))
 
 
+def download_attachment(config: BeeperConfig, attachment: dict[str, Any]) -> bytes:
+    """Download an mxc attachment from the homeserver and decrypt it.
+
+    Handles Beeper's encrypted attachments (the message dict carries the MSC3244
+    `file` block under `encFile`) as well as plaintext ones. This is the matrix
+    transport's replacement for Beeper Desktop's /assets/serve endpoint. Uses a
+    short-lived nio client (no sync) because Beeper's media routing needs nio's
+    download handling; a plain GET on the media path returns HTTP 400.
+    """
+    from nio import AsyncClient, AsyncClientConfig
+    from nio.crypto.attachments import decrypt_attachment
+
+    creds = _load_credentials(config)
+    enc = attachment.get("encFile")
+    mxc = (enc or {}).get("url") if enc else attachment.get("srcURL")
+    if not mxc or not str(mxc).startswith("mxc://"):
+        raise BeeperApiError(f"Attachment has no mxc url: {str(mxc)[:40]}")
+    server, media_id = str(mxc)[len("mxc://"):].split("/", 1)
+
+    async def _download() -> bytes:
+        client = AsyncClient(
+            creds["homeserver"], creds["user_id"], device_id=creds["device_id"],
+            config=AsyncClientConfig(encryption_enabled=False),
+        )
+        client.restore_login(
+            user_id=creds["user_id"], device_id=creds["device_id"], access_token=creds["access_token"],
+        )
+        try:
+            resp = await client.download(server_name=server, media_id=media_id)
+            if not hasattr(resp, "body"):
+                raise BeeperApiError(f"Attachment download failed: {getattr(resp, 'message', resp)}")
+            return resp.body
+        finally:
+            await client.close()
+
+    loop = asyncio.new_event_loop()
+    try:
+        ciphertext = loop.run_until_complete(_download())
+    finally:
+        loop.close()
+    if not ciphertext:
+        raise BeeperApiError("Attachment download returned no data")
+    if enc:
+        return decrypt_attachment(ciphertext, enc["key"]["k"], enc["hashes"]["sha256"], enc["iv"])
+    return ciphertext
+
+
 # ---- one-shot megolm key-backup restore -----------------------------------
 #
 # The nio device can't decrypt history from before it joined a room. Beeper

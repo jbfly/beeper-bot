@@ -187,19 +187,37 @@ went from 0 readable messages to full history — 342 sessions recovered):
   (`m.megolm_backup.v1`); the backup PK cipher's HKDF `info` is **empty** — don't
   reuse one for the other. All base64 in backups is **unpadded**.
 
-### ⛔ Still to do
+### ✅ Done — attachment fetch/decrypt (`matrix_transport.download_attachment`, wired into `media.py`)
 
-1. **Attachment fetch/decrypt.** `media.py` still uses Beeper Desktop's
-   `/assets/serve?url=<mxc>` (downloads *and* decrypts). Under `transport=matrix`
-   the transport must `download()` the mxc and decrypt itself — nio has the
-   helpers, and the message dicts already carry `attachments[].encFile` (the
-   MSC3244 file block with keys) for exactly this. Route `media.fetch_attachment`
-   through the transport when it is a `MatrixTransport`.
-2. **Cut over on venus:** a Python 3.12 venv with `matrix-nio[e2e]`, run
-   `beeper-bot matrix-restore-keys` once, set `transport = "matrix"`, and add a
-   `beeper-bot.service` systemd user unit next to the bridges; then retire the
-   Beeper-Desktop-on-alpha dependency (AGENTS.md §2 runtime dep #1). Sanity-check
-   a full `sync` builds the archive from Matrix before disabling alpha.
+- `download_attachment(config, attachment)` fetches an mxc from the homeserver
+  via a short-lived nio client (a plain GET on the media path returns HTTP 400 —
+  Beeper's media routing needs nio's `client.download`) and decrypts encrypted
+  attachments with nio's `decrypt_attachment` using the `encFile` block the
+  message dict already carries.
+- `media.fetch_attachment` now takes the attachment dict and branches on
+  transport: Desktop `/assets/serve` for desktop-api, `download_attachment` for
+  matrix. Verified live end-to-end (image downloaded, cached, valid JPEG).
+- Note: in practice Beeper serves media as **plaintext mxc** even from bridges
+  (a sweep of all rooms found 0 encrypted / several plaintext), so the decrypt
+  branch is a correct standards fallback that rarely fires here.
+
+**The transport is now feature-complete.** What's left is operational cutover.
+
+### ⛔ Still to do — operational cutover on venus
+
+1. Create a **Python 3.12** venv with `matrix-nio[e2e]` (3.13/3.14 can't build
+   python-olm), install the bot there.
+2. Run `beeper-bot matrix-restore-keys` once (recovery key via
+   `$BEEPER_RECOVERY_KEY`).
+3. Set `[beeper] transport = "matrix"` in the venus config; run a full
+   `beeper-bot sync` and confirm the archive builds from Matrix (spot-check a
+   chat with history).
+4. Add a `beeper-bot.service` systemd user unit next to the bridge units; then
+   retire the Beeper-Desktop-on-alpha dependency (AGENTS.md §2 runtime dep #1).
+
+This last step changes the production deployment (moves the live bot from alpha
+to venus), so it should be done deliberately with the owner rather than
+unattended.
 
 Until these land, the bot stays on alpha via the Desktop API (default toggle).
 Nothing about the self-hosted bridges forces a bot change — the Desktop API keeps

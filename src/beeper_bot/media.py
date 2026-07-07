@@ -116,11 +116,18 @@ def _media_cache_dir(config: AppConfig) -> Path:
     return cache
 
 
-def fetch_attachment(config: AppConfig, src_url: str) -> Path:
-    """Resolve an attachment to a local file. file:// URLs point straight at
-    Beeper Desktop's media store; mxc:// URLs are fetched (and decrypted) by
-    the Desktop API's /v1/assets/serve endpoint."""
-    src_url = src_url.strip()
+def fetch_attachment(config: AppConfig, attachment: dict | str) -> Path:
+    """Resolve an attachment to a local file. file:// URLs point straight at a
+    local media store; mxc:// URLs are downloaded (and decrypted) — via Beeper
+    Desktop's /v1/assets/serve on the desktop-api transport, or straight from
+    the homeserver on the matrix transport.
+
+    Accepts the full attachment dict (needed to decrypt encrypted media on the
+    matrix transport); a bare src_url string is also accepted for back-compat.
+    """
+    if isinstance(attachment, str):
+        attachment = {"srcURL": attachment}
+    src_url = str(attachment.get("srcURL") or (attachment.get("encFile") or {}).get("url") or "").strip()
     if src_url.startswith("file://"):
         path = Path(urllib.parse.unquote(src_url[7:]))
         if not path.exists():
@@ -133,19 +140,27 @@ def fetch_attachment(config: AppConfig, src_url: str) -> Path:
     if cache_path.exists() and cache_path.stat().st_size > 0:
         return cache_path
 
-    from .beeper_api import BeeperApiClient
+    if getattr(config.beeper, "transport", "desktop-api") == "matrix":
+        from .matrix_transport import download_attachment
 
-    client = BeeperApiClient(config.beeper)
-    token = client._load_token()
-    url = f"{config.beeper.api_base.rstrip('/')}/assets/serve?url={urllib.parse.quote(src_url, safe='')}"
-    req = request.Request(url, headers={"Authorization": f"Bearer {token}"})
-    try:
-        with request.urlopen(req, timeout=max(config.beeper.http_timeout_seconds, 120)) as resp:
-            data = resp.read()
-    except error.HTTPError as exc:
-        raise MediaError(f"Asset download failed: HTTP {exc.code}") from exc
-    except error.URLError as exc:
-        raise MediaError(f"Asset download failed: {exc}") from exc
+        try:
+            data = download_attachment(config.beeper, attachment)
+        except Exception as exc:
+            raise MediaError(f"Matrix attachment download failed: {exc}") from exc
+    else:
+        from .beeper_api import BeeperApiClient
+
+        client = BeeperApiClient(config.beeper)
+        token = client._load_token()
+        url = f"{config.beeper.api_base.rstrip('/')}/assets/serve?url={urllib.parse.quote(src_url, safe='')}"
+        req = request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with request.urlopen(req, timeout=max(config.beeper.http_timeout_seconds, 120)) as resp:
+                data = resp.read()
+        except error.HTTPError as exc:
+            raise MediaError(f"Asset download failed: HTTP {exc.code}") from exc
+        except error.URLError as exc:
+            raise MediaError(f"Asset download failed: {exc}") from exc
     if not data:
         raise MediaError("Asset download returned no data")
     cache_path.write_bytes(data)
@@ -312,7 +327,7 @@ def derive_message_media(
 
     attachment_id = str(attachment.get("id") or attachment.get("srcURL") or "")
     try:
-        path = fetch_attachment(config, str(attachment["srcURL"]))
+        path = fetch_attachment(config, attachment)
         if kind == "voice-memo":
             transcript, chunks, duration = transcribe_voice_memo(config, path, client)
             derived = f"{VOICE_PREFIX} {transcript}".strip()
