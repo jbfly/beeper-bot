@@ -26,8 +26,12 @@ Design notes
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import threading
+import urllib.request
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,6 +46,8 @@ DEFAULT_STORE = Path.home() / ".local" / "state" / "beeper-bot" / "matrix-store"
 # How many events a single /messages page pulls when no explicit limit applies.
 _PAGE_LIMIT = 500
 
+_BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
 
 def _iso(ts_ms: int) -> str:
     if not ts_ms:
@@ -49,15 +55,19 @@ def _iso(ts_ms: int) -> str:
     return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
 
 
+def _load_credentials(config: BeeperConfig) -> dict:
+    creds_path = Path(config.matrix_credentials_file or DEFAULT_CREDENTIALS)
+    if not creds_path.exists():
+        raise BeeperApiError(f"Matrix credentials not found: {creds_path}")
+    return json.loads(creds_path.read_text())
+
+
 class MatrixTransport:
     """Synchronous facade over a persistent matrix-nio client."""
 
     def __init__(self, config: BeeperConfig):
         self.config = config
-        creds_path = Path(config.matrix_credentials_file or DEFAULT_CREDENTIALS)
-        if not creds_path.exists():
-            raise BeeperApiError(f"Matrix credentials not found: {creds_path}")
-        self._creds = json.loads(creds_path.read_text())
+        self._creds = _load_credentials(config)
         self._store = Path(config.matrix_store_path or DEFAULT_STORE)
         self._store.mkdir(parents=True, exist_ok=True)
         self._own_id = str(self._creds["user_id"])
@@ -324,3 +334,137 @@ class MatrixTransport:
 
     def send_message(self, chat_id: str, text: str) -> None:
         self._submit(self._a_send_message(chat_id, text))
+
+
+# ---- one-shot megolm key-backup restore -----------------------------------
+#
+# The nio device can't decrypt history from before it joined a room. Beeper
+# keeps a server-side megolm backup (m.megolm_backup.v1.curve25519-aes-sha2)
+# whose decryption key is sealed in secret storage (SSSS) under the account
+# recovery key. This restores it once into the nio store so the transport can
+# read old history. See docs/self-hosted-bridges-and-matrix-migration.md.
+
+
+def _b58decode(text: str) -> bytes:
+    n = 0
+    for ch in text.replace(" ", ""):
+        n = n * 58 + _BASE58.index(ch)
+    return n.to_bytes(35, "big")
+
+
+def _recovery_key_to_ssss_key(recovery_key: str) -> bytes:
+    raw = _b58decode(recovery_key)
+    if raw[0] != 0x8B or raw[1] != 0x01:
+        raise BeeperApiError("Recovery key has an unexpected prefix")
+    parity = 0
+    for byte in raw:
+        parity ^= byte
+    if parity != 0:
+        raise BeeperApiError("Recovery key failed its parity check")
+    return raw[2:34]
+
+
+def _hkdf_sha256(ikm: bytes, salt: bytes, info: bytes, length: int) -> bytes:
+    prk = hmac.new(salt, ikm, hashlib.sha256).digest()
+    okm, block, counter = b"", b"", 1
+    while len(okm) < length:
+        block = hmac.new(prk, block + info + bytes([counter]), hashlib.sha256).digest()
+        okm += block
+        counter += 1
+    return okm[:length]
+
+
+def _pk_from_private(private_key: bytes):
+    """Build an olm.PkDecryption bound to an existing curve25519 private key."""
+    import olm
+    from olm import pk as pkmod
+
+    lib, ffi = pkmod.lib, pkmod.ffi
+    obj = olm.PkDecryption.__new__(olm.PkDecryption)
+    key_len = lib.olm_pk_key_length()
+    key_buf = ffi.new("char[]", key_len)
+    priv_buf = ffi.new("char[]", bytes(private_key))
+    obj._check_error(
+        lib.olm_pk_key_from_private(obj._pk_decryption, key_buf, key_len, priv_buf, len(private_key))
+    )
+    obj.public_key = ffi.unpack(key_buf, key_len).decode()
+    return obj
+
+
+def restore_key_backup(config: BeeperConfig, recovery_key: str) -> dict[str, int]:
+    """Decrypt the server-side megolm backup and import it into the nio store.
+
+    One-shot: run once (the store persists). Returns counts of imported /
+    already-present / failed sessions.
+    """
+    from Crypto.Cipher import AES
+    from Crypto.Util import Counter
+    from nio import AsyncClient, AsyncClientConfig
+    from nio.crypto import InboundGroupSession
+
+    creds = _load_credentials(config)
+    homeserver = creds["homeserver"]
+    user_id = creds["user_id"]
+    token = creds["access_token"]
+
+    def _get(path: str) -> Any:
+        req = urllib.request.Request(homeserver + path, method="GET")
+        req.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(req, timeout=config.http_timeout_seconds or 60) as resp:
+            return json.loads(resp.read().decode())
+
+    def _account_data(name: str) -> dict:
+        return _get(f"/_matrix/client/v3/user/{user_id}/account_data/{name}")
+
+    ssss_key = _recovery_key_to_ssss_key(recovery_key)
+    key_id = _account_data("m.secret_storage.default_key")["key"]
+    secret = _account_data("m.megolm_backup.v1")["encrypted"][key_id]
+    okm = _hkdf_sha256(ssss_key, b"\x00" * 32, b"m.megolm_backup.v1", 64)
+    ciphertext = base64.b64decode(secret["ciphertext"])
+    if not hmac.compare_digest(base64.b64decode(secret["mac"]), hmac.new(okm[32:64], ciphertext, hashlib.sha256).digest()):
+        raise BeeperApiError("Recovery key does not match this account's secret storage")
+    counter = Counter.new(128, initial_value=int.from_bytes(base64.b64decode(secret["iv"]), "big"))
+    backup_private = base64.b64decode(AES.new(okm[:32], AES.MODE_CTR, counter=counter).decrypt(ciphertext).decode().strip())
+
+    import olm
+
+    pk = _pk_from_private(backup_private)
+    version = _get("/_matrix/client/v3/room_keys/version")
+    if pk.public_key.rstrip("=") != version["auth_data"]["public_key"].rstrip("="):
+        raise BeeperApiError("Derived backup key does not match the server's backup version")
+    rooms = _get(f"/_matrix/client/v3/room_keys/keys?version={version['version']}").get("rooms", {})
+
+    store = Path(config.matrix_store_path or DEFAULT_STORE)
+    store.mkdir(parents=True, exist_ok=True)
+    client = AsyncClient(
+        homeserver, user_id, device_id=creds["device_id"], store_path=str(store),
+        config=AsyncClientConfig(store_sync_tokens=True, encryption_enabled=True),
+    )
+    client.restore_login(user_id=user_id, device_id=creds["device_id"], access_token=token)
+    client.load_store()
+
+    imported = present = failed = 0
+    for room_id, room in rooms.items():
+        for session_data in room.get("sessions", {}).values():
+            try:
+                data = json.loads(pk.decrypt(olm.PkMessage(
+                    session_data["session_data"]["ephemeral"],
+                    session_data["session_data"]["mac"],
+                    session_data["session_data"]["ciphertext"],
+                )))
+                session = InboundGroupSession.import_session(
+                    data["session_key"],
+                    data["sender_claimed_keys"].get("ed25519", ""),
+                    data["sender_key"],
+                    room_id,
+                    data.get("forwarding_curve25519_key_chain", []),
+                )
+                if client.olm.inbound_group_store.add(session):
+                    client.olm.save_inbound_group_session(session)
+                    imported += 1
+                else:
+                    present += 1
+            except Exception:
+                failed += 1
+    total = sum(len(r.get("sessions", {})) for r in rooms.values())
+    return {"total": total, "imported": imported, "already_present": present, "failed": failed}

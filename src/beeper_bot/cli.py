@@ -77,6 +77,16 @@ def build_parser() -> argparse.ArgumentParser:
     chats.add_argument("--json", action="store_true", help="Print machine-readable output")
     chats.add_argument("--query", help="Filter by title or participant name")
 
+    restore = subparsers.add_parser(
+        "matrix-restore-keys",
+        help="Restore the megolm key backup into the matrix-nio store (one-shot; transport=matrix)",
+    )
+    restore.add_argument("--json", action="store_true", help="Print machine-readable output")
+    restore.add_argument(
+        "--recovery-key-file",
+        help="File containing the Beeper recovery key (else read env BEEPER_RECOVERY_KEY)",
+    )
+
     eval_parser = subparsers.add_parser("eval", help="Run a local benchmark suite")
     eval_parser.add_argument("--suite", default=str(DEFAULT_EVAL_SUITE_PATH), help=f"Path to eval suite JSON (default: {DEFAULT_EVAL_SUITE_PATH})")
     eval_parser.add_argument("--json", action="store_true", help="Print machine-readable output")
@@ -352,6 +362,33 @@ def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int
     return 0
 
 
+def cmd_matrix_restore_keys(config_path: Path, recovery_key_file: str | None, as_json: bool) -> int:
+    import os
+
+    from .matrix_transport import restore_key_backup
+
+    config = load_config(config_path)
+    recovery_key = os.environ.get("BEEPER_RECOVERY_KEY", "")
+    if recovery_key_file:
+        recovery_key = Path(recovery_key_file).expanduser().read_text().strip()
+    if not recovery_key:
+        print(
+            "No recovery key provided. Set BEEPER_RECOVERY_KEY or pass "
+            "--recovery-key-file <path>.",
+            file=sys.stderr,
+        )
+        return 2
+    stats = restore_key_backup(config.beeper, recovery_key)
+    if as_json:
+        print(json.dumps(stats, sort_keys=True))
+    else:
+        print(
+            f"Restored megolm backup: wrote {stats['imported']} of {stats['total']} "
+            f"sessions to the store ({stats['failed']} failed). Idempotent — safe to re-run."
+        )
+    return 0
+
+
 def cmd_people(config_path: Path, args: argparse.Namespace) -> int:
     config = load_config(config_path)
     sub = args.people_command
@@ -464,6 +501,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_people(config_path, args)
         if args.command == "chats":
             return cmd_chats(config_path, args.query, args.json)
+        if args.command == "matrix-restore-keys":
+            return cmd_matrix_restore_keys(config_path, args.recovery_key_file, args.json)
     except ConfigError as exc:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2

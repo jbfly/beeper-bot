@@ -167,6 +167,26 @@ transport (the original handoff plan). Progress so far:
   on **Python 3.12** (3.11 also works). alpha's current 3.14 env cannot host the
   matrix transport.
 
+### ✅ Done — megolm key-backup restore (`matrix-transport.py`, `beeper-bot matrix-restore-keys`)
+
+The device couldn't decrypt history from before it joined a room. Restoring the
+server-side megolm backup fixes that. Implemented and verified live (La Familia
+went from 0 readable messages to full history — 342 sessions recovered):
+
+- `restore_key_backup(config, recovery_key)` decrypts the SSSS secret
+  `m.megolm_backup.v1` with the recovery key, fetches
+  `/room_keys/keys?version=N`, decrypts each session with **libolm's
+  `PkDecryption`** (bind our backup private key via `olm_pk_key_from_private` —
+  hand-rolled curve25519-aes-sha2 got the SSSS-vs-backup HKDF info wrong; use
+  libolm), and imports each via `InboundGroupSession.import_session` +
+  `save_inbound_group_session`.
+- CLI: `beeper-bot matrix-restore-keys` (reads the recovery key from
+  `$BEEPER_RECOVERY_KEY` or `--recovery-key-file`). One-shot; the store persists.
+  Idempotent (DB upsert), so re-running is safe.
+- Gotcha: the SSSS layer's HKDF `info` is the secret **name**
+  (`m.megolm_backup.v1`); the backup PK cipher's HKDF `info` is **empty** — don't
+  reuse one for the other. All base64 in backups is **unpadded**.
+
 ### ⛔ Still to do
 
 1. **Attachment fetch/decrypt.** `media.py` still uses Beeper Desktop's
@@ -175,16 +195,11 @@ transport (the original handoff plan). Progress so far:
    helpers, and the message dicts already carry `attachments[].encFile` (the
    MSC3244 file block with keys) for exactly this. Route `media.fetch_attachment`
    through the transport when it is a `MatrixTransport`.
-2. **Key-backup / history restore.** The device can't decrypt history from before
-   it joined (shows as undecryptable; e.g. a group chat's first page comes back
-   empty). Restore the megolm backup (`m.megolm_backup.v1`, present server-side)
-   using the recovery key so the archive can be built from Matrix. Main remaining
-   unknown; the recovery-key → SSSS path used for cross-signing already proves we
-   can decrypt the backup secret.
-3. **Cut over on venus:** a Python 3.12 venv with `matrix-nio[e2e]`, set
-   `transport = "matrix"`, and a `beeper-bot.service` systemd user unit next to
-   the bridges; then retire the Beeper-Desktop-on-alpha dependency
-   (AGENTS.md §2 runtime dep #1).
+2. **Cut over on venus:** a Python 3.12 venv with `matrix-nio[e2e]`, run
+   `beeper-bot matrix-restore-keys` once, set `transport = "matrix"`, and add a
+   `beeper-bot.service` systemd user unit next to the bridges; then retire the
+   Beeper-Desktop-on-alpha dependency (AGENTS.md §2 runtime dep #1). Sanity-check
+   a full `sync` builds the archive from Matrix before disabling alpha.
 
 Until these land, the bot stays on alpha via the Desktop API (default toggle).
 Nothing about the self-hosted bridges forces a bot change — the Desktop API keeps
