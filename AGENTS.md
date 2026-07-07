@@ -36,7 +36,13 @@ index-media` command need the two live services below.
    (Settings → Developers → Beeper Desktop API). Base `http://127.0.0.1:23373/v1`,
    bearer token in `~/.config/beeper-bot/token`. Provides chats, messages,
    and `GET /v1/assets/serve?url=<mxc>` which downloads **and decrypts**
-   attachments.
+   attachments. **This ties the bot to alpha (needs the Desktop GUI).** The
+   networks themselves are now bridged by **self-hosted mautrix bridges on
+   venus** (via `bbctl`), and a **matrix-nio transport to replace this Desktop
+   API leg** is spiked but not yet wired in — see
+   `docs/self-hosted-bridges-and-matrix-migration.md` for the current
+   self-hosting status, the bridge-login recipe, and the remaining
+   `MatrixTransport` work.
 2. **ai-ops `llama-serve`** (`~/git/ai-ops/llama-serve`) — a `llama.cpp`
    proxy on `http://127.0.0.1:8090/v1` that starts the model on demand and
    unloads when idle. The bot only ever talks to the proxy, never the raw
@@ -267,3 +273,7 @@ split into multiple `(i/n)` messages when over `max_reply_chars`.
   (harness rules, §4.4 answer-path validity), `chat-coverage-plan.md`,
   `multimodal-memos-and-images-plan.md`, `implementation-plan.md`,
   `technical-plan.md`, `security.md`.
+- **Hosting / transport migration:** `self-hosted-bridges-and-matrix-migration.md`
+  is the live story (self-hosted venus bridges ✅, matrix-nio transport spiked,
+  bot still on alpha). `incident-2026-07-07-beeper-server.md` and
+  `venus-deployment-note.md` are the (on-hold) Beeper-Server history it supersedes.
