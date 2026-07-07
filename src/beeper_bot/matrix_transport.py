@@ -61,6 +61,19 @@ def _iso(ts_ms: int) -> str:
     return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
 
 
+# Tiebreaker width for sort keys. Matrix origin_server_ts is not unique (bridge
+# backfill and photo albums share a millisecond), but the archive requires a
+# unique (chat_id, sort_key). Pack ts_ms into the high bits and a stable
+# per-event hash into the low 20 bits: ordering stays by time, ties break
+# deterministically, and ts_ms * 2^20 stays within SQLite's signed-64-bit range.
+_SORTKEY_TIE_BITS = 20
+
+
+def _sort_key(ts_ms: int, event_id: str) -> int:
+    tie = int.from_bytes(hashlib.sha1(event_id.encode()).digest()[:3], "big") & ((1 << _SORTKEY_TIE_BITS) - 1)
+    return (int(ts_ms) << _SORTKEY_TIE_BITS) | tie
+
+
 def _load_credentials(config: BeeperConfig) -> dict:
     creds_path = Path(config.matrix_credentials_file or DEFAULT_CREDENTIALS)
     if not creds_path.exists():
@@ -203,7 +216,7 @@ class MatrixTransport:
         base = {
             "id": event_id,
             "messageID": event_id,
-            "sortKey": int(ts),
+            "sortKey": _sort_key(ts, event_id),
             "timestamp": _iso(int(ts)),
             "senderID": sender,
             "senderName": self._display_name(room, sender),
