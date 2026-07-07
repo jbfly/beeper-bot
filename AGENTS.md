@@ -89,7 +89,7 @@ n_tokens`). The 12B profile uses `UBATCH_SIZE=512`, `IMAGE_MAX_TOKENS=280`.
 
 ---
 
-## 4. Data model (SQLite, schema v6)
+## 4. Data model (SQLite, schema v7)
 
 `db.py` owns the schema and forward-only migrations (`PRAGMA user_version`,
 `migrate_vN_to_vN+1`, applied in `init_db_path`). Tables:
@@ -107,10 +107,15 @@ n_tokens`). The 12B profile uses `UBATCH_SIZE=512`, `IMAGE_MAX_TOKENS=280`.
   turn log, user-approved facts, pending writes awaiting confirmation.
 - `attachment_derived_text` (v6) — transcripts/descriptions with provenance
   (attachment id, model alias, chunk count, duration, status, error).
+- `outbound_queue` (v7) — the `beeper-bot notify` spool: `(target, text,
+  created_at, sent_at)`. Enqueued by the CLI, drained by the serve loop.
 - `traces`, `trace_events`, `telemetry_samples` — observability.
 
+Per-control-chat cursors live in `runtime_state` under
+`control_chat_last_seen_sort_key:<chat_id>` (one row per purpose-scoped chat).
+
 History: v2 people graph · v3 control memory · v4 tracing/telemetry ·
-v5 porter FTS · v6 attachment derived text.
+v5 porter FTS · v6 attachment derived text · v7 outbound notify queue.
 
 ---
 
@@ -196,6 +201,16 @@ display_name = "Neighborhood"
 aliases = ["neighborhood", "neighbors"]
 chats = ["Neighborhood Community", "Building Updates"]
 
+# Purpose-scoped control chats (keystone for translation / business / cams
+# lanes). The serve loop polls every one, each with its own cursor +
+# conversational memory. `beeper.control_chat_id` is an implicit `main`.
+# persona = literal system directive prepended to free-text answers.
+# allowed_commands = restrict command modes (empty = all; help/status always ok).
+[control_chats.translate]
+chat_id = "!room:beeper.local"
+persona = "You are a PT-PT ↔ EN translation assistant."
+allowed_commands = ["ask", "help"]
+
 [security]
 allow_web_search = false
 log_raw_messages = false
@@ -237,17 +252,31 @@ The committed `eval/` suites are synthetic public-safe examples. Keep real local
 ## 8. CLI & control-chat commands
 
 **CLI** (`beeper-bot --config <path> <cmd>`): `init-db`, `status`, `sync`,
-`find <q>`, `ask <q>`, `serve [--once]`, `catchup <chat> [--since-sort-key]
-[--no-cursor-update]`, `index-media --kind voice|image [--limit] [--chat]`,
-`chats [--query]`, `eval`, `console`, `people {list,seed,alias,link,delete}`.
+`find <q>`, `ask <q>`, `serve [--once]`, `notify <text> [--chat <name>]`,
+`catchup <chat> [--since-sort-key] [--no-cursor-update]`,
+`index-media --kind voice|image [--limit] [--chat]`, `chats [--query]`, `eval`,
+`console`, `people {list,seed,alias,link,delete}`.
+
+`notify` queues a fire-and-forget message that the running serve loop delivers
+to a control chat (default `main`) — the outbound half of the event bus. Any
+homelab box: `ssh venus beeper-bot notify "backup failed" --chat main`.
 
 **Control chat:** plain text = `/ask`; also `/find`, `/catchup <chat>`,
-`/index <chat>`, `/status`, `/reindex`, `/help`. Natural language also
-routes: "summarize the X chat(s)", "what is happening in X", configured
-chat-set names such as "Neighborhood" or "Sample Festival", "transcript/summary
-of my last voice memo", "remember that X is Y" (confirmation-gated). Replies are reformatted
-for plain-text Matrix (markdown → 🔹 headers, `•` bullets, blank lines) and
-split into multiple `(i/n)` messages when over `max_reply_chars`.
+`/index <chat>`, `/music <issue>`, `/status`, `/reindex`, `/help`. Natural
+language also routes: "summarize the X chat(s)", "what is happening in X",
+configured chat-set names such as "Neighborhood" or "Sample Festival",
+"transcript/summary of my last voice memo", "remember that X is Y"
+(confirmation-gated). Replies are reformatted for plain-text Matrix (markdown →
+🔹 headers, `•` bullets, blank lines) and split into multiple `(i/n)` messages
+when over `max_reply_chars`.
+
+**Purpose-scoped control chats** (`[control_chats.*]`, keystone shipped
+2026-07-07): the serve loop polls every configured control chat, each with its
+own cursor, per-chat conversational memory (`recent_control_turns(chat_id=…)`),
+a `persona` (literal system directive threaded into `ask_archive(persona=…)`),
+and an `allowed_commands` filter. `beeper.control_chat_id` remains an implicit
+`main` chat, so single-chat configs are unchanged. This is the on-ramp the
+translation and Odoo plans depend on (see their docs).
 
 ---
 

@@ -50,17 +50,38 @@ def record_control_turn(
         conn.commit()
 
 
-def recent_control_turns(config: AppConfig, limit: int = 8) -> list[dict[str, str]]:
+def recent_control_turns(
+    config: AppConfig, limit: int = 8, chat_id: str | None = None
+) -> list[dict[str, str]]:
+    """Recent control-chat turns, newest last.
+
+    When `chat_id` is given, only that control chat's turns are returned, so
+    purpose-scoped chats (translation, business, …) keep separate conversational
+    memory and don't bleed context into one another. Passing None (the default)
+    preserves the prior all-chats behavior for the CLI ask path.
+    """
     with open_db(config.archive.path) as conn:
-        rows = conn.execute(
-            """
-            SELECT role, content
-            FROM control_turns
-            ORDER BY turn_id DESC
-            LIMIT ?
-            """,
-            (max(1, int(limit)),),
-        ).fetchall()
+        if chat_id:
+            rows = conn.execute(
+                """
+                SELECT role, content
+                FROM control_turns
+                WHERE chat_id = ?
+                ORDER BY turn_id DESC
+                LIMIT ?
+                """,
+                (chat_id, max(1, int(limit))),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT role, content
+                FROM control_turns
+                ORDER BY turn_id DESC
+                LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
     return [{"role": str(row["role"]), "content": str(row["content"])} for row in reversed(rows)]
 
 

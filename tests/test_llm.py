@@ -57,7 +57,9 @@ class FakeLlmClient:
         evidence: list[EvidenceItem],
         person_context: str = "",
         control_context: str = "",
+        persona: str = "",
     ) -> str:
+        self.persona = persona
         return self.answer
 
     def plan_query(self, config, question: str, catalog, graph=None) -> QueryPlan:

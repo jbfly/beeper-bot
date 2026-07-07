@@ -51,24 +51,29 @@ what did she mean). Stored alongside the pending-confirmation state that
   draft into the target chat via `send_message`. Gate behind the existing
   confirm/reject flow, per-chat allowlist in config. Not before T1–T3 have earned trust.
 
-## Purpose-chats prerequisite (shared with the Odoo plan)
+## Purpose-chats prerequisite (shared with the Odoo plan) — ✅ SHIPPED 2026-07-07
 
-Config today has a single `control_chat_id`. Generalize:
+The keystone generalization is **done**. Config now supports `[control_chats.*]`;
+the serve loop polls every control chat, each with its own cursor, per-chat
+conversational memory, a `persona`, and an `allowed_commands` filter.
+`beeper.control_chat_id` is an implicit `main` chat so nothing broke. See
+AGENTS.md §8 and `config.example.toml`.
 
 ```toml
-[control_chats.main]
-chat_id = "..."
-# default: current behavior
-
 [control_chats.translate]
-chat_id = "..."
-persona = "translation"        # selects system prompt + command set
-allowed_commands = ["translate", "help", "status"]
+chat_id = "!room:beeper.local"
+# persona is now the LITERAL system directive (not a name into a registry):
+persona = "You are a European-Portuguese ↔ English translation and drafting assistant."
+allowed_commands = ["ask", "help"]   # empty = all commands
 ```
 
-The serve loop polls all control chats; each carries its own cursor, persona, and
-sticky state. `control_chat_id` stays as an alias for `control_chats.main` so nothing
-breaks.
+What this unblocks for translation: **T3 is now mostly a config entry** — a
+"Tradução" chat with the persona above already threads that directive into every
+free-text answer via `ask_archive(persona=…)`. What's still T1/T2 work: a
+`/translate <chat>` command that force-syncs + pulls the target chat's last N
+messages as context, and the **sticky target** state so plain follow-ups
+("what should I say?") resolve against that chat. The persona seam and per-chat
+memory they need already exist.
 
 ## Quality gate
 

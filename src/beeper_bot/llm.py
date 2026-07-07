@@ -71,6 +71,7 @@ class LlmClient(Protocol):
         evidence: list[EvidenceItem],
         person_context: str = "",
         control_context: str = "",
+        persona: str = "",
     ) -> str: ...
 
 
@@ -165,13 +166,21 @@ class OpenAiCompatLlmClient:
         evidence: list[EvidenceItem],
         person_context: str = "",
         control_context: str = "",
+        persona: str = "",
     ) -> str:
         prompt = build_answer_prompt(question, evidence, person_context, control_context)
-        trace_event("answer.prompt", {"question": question, "prompt": prompt, "person_context": person_context, "control_context": control_context})
+        trace_event("answer.prompt", {"question": question, "prompt": prompt, "person_context": person_context, "control_context": control_context, "persona": persona})
+        answer_system: list[dict[str, str]] = []
+        if persona.strip():
+            # A purpose-scoped control chat's persona (e.g. a translation
+            # assistant) prepends its own directive, then the evidence-grounding
+            # rule still constrains the model to the archive.
+            answer_system.append({"role": "system", "content": persona.strip()})
+        answer_system.append({"role": "system", "content": "Answer only from provided evidence. No hidden reasoning."})
         first = self._post_chat(
             config,
             [
-                {"role": "system", "content": "Answer only from provided evidence. No hidden reasoning."},
+                *answer_system,
                 {"role": "user", "content": prompt},
             ],
             trace_phase="answer",
@@ -907,9 +916,10 @@ def _answer_with_slice_reasoning(
     windows: list[ChatWindow],
     person_context: str = "",
     control_context: str = "",
+    persona: str = "",
 ) -> str:
     if not isinstance(client, OpenAiCompatLlmClient):
-        return client.answer_from_evidence(config, question, evidence, person_context, control_context)
+        return client.answer_from_evidence(config, question, evidence, person_context, control_context, persona)
 
     prompt = build_slice_reasoning_prompt(question, windows, evidence, person_context, control_context)
     trace_event(
@@ -921,10 +931,14 @@ def _answer_with_slice_reasoning(
             "message_count": sum(len(window.messages) for window in windows),
         },
     )
+    slice_system: list[dict[str, str]] = []
+    if persona.strip():
+        slice_system.append({"role": "system", "content": persona.strip()})
+    slice_system.append({"role": "system", "content": "Answer from bounded chat windows only. No hidden reasoning."})
     first = client._post_chat(
         config,
         [
-            {"role": "system", "content": "Answer from bounded chat windows only. No hidden reasoning."},
+            *slice_system,
             {"role": "user", "content": prompt},
         ],
         trace_phase="answer.slice",
@@ -1326,8 +1340,9 @@ def ask_archive(
     llm_client: LlmClient | None = None,
     control_turns: list[dict[str, Any]] | None = None,
     memory_state: dict[str, Any] | None = None,
+    persona: str = "",
 ) -> AskResponse:
-    trace_event("ask.start", {"question": question, "limit": limit})
+    trace_event("ask.start", {"question": question, "limit": limit, "persona": persona})
     if control_turns is None or memory_state is None:
         from .memory import load_memory_state, recent_control_turns
 
@@ -1471,9 +1486,9 @@ def ask_archive(
 
     trace_event("person.context", {"person_context": person_context})
     if slice_mode and slice_windows:
-        answer = _answer_with_slice_reasoning(client, config, question, evidence, slice_windows, person_context, control_context)
+        answer = _answer_with_slice_reasoning(client, config, question, evidence, slice_windows, person_context, control_context, persona)
     else:
-        answer = client.answer_from_evidence(config, question, evidence, person_context, control_context)
+        answer = client.answer_from_evidence(config, question, evidence, person_context, control_context, persona)
     repaired = _repair_list_answer_from_evidence(question, answer, evidence)
     if repaired != answer:
         trace_event("answer.list_repair", {"question": question, "before": answer, "after": repaired})

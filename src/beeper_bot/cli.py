@@ -9,7 +9,7 @@ from .beeper_api import BeeperApiClient, BeeperApiError, make_message_client
 from .bridge import ControlBridge
 from .config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from .console import serve_console
-from .db import SCHEMA_VERSION, collect_runtime_status, init_db_path
+from .db import SCHEMA_VERSION, collect_runtime_status, enqueue_outbound, init_db_path, open_db
 from .evals import (
     DEFAULT_EVAL_SUITE_PATH,
     configure_eval_run,
@@ -57,6 +57,14 @@ def build_parser() -> argparse.ArgumentParser:
     serve = subparsers.add_parser("serve", help="Poll the private control chat")
     serve.add_argument("--once", action="store_true", help="Run one poll pass and exit")
     serve.add_argument("--json", action="store_true", help="Print machine-readable output for --once")
+
+    notify = subparsers.add_parser(
+        "notify",
+        help="Queue a message for the running serve loop to post to a control chat",
+    )
+    notify.add_argument("text", nargs="+", help="Message text (also read from stdin if '-')")
+    notify.add_argument("--chat", default="main", help="Target control chat name (default: main) or raw chat id")
+    notify.add_argument("--json", action="store_true", help="Print machine-readable output")
 
     media = subparsers.add_parser("index-media", help="Transcribe voice memos / describe images into the archive")
     media.add_argument("--kind", choices=["voice", "image"], default="voice", help="Attachment kind to process (default: voice)")
@@ -338,6 +346,24 @@ def cmd_serve(config_path: Path, once: bool, as_json: bool) -> int:
     return 0
 
 
+def cmd_notify(config_path: Path, text_parts: list[str], chat: str, as_json: bool) -> int:
+    config = load_config(config_path)
+    text = " ".join(text_parts)
+    if text.strip() == "-":
+        text = sys.stdin.read()
+    text = text.rstrip("\n")
+    if not text.strip():
+        raise ConfigError("notify: empty message")
+    init_db_path(config.archive.path)
+    with open_db(config.archive.path) as conn:
+        row_id = enqueue_outbound(conn, chat, text)
+    if as_json:
+        print(json.dumps({"ok": True, "id": row_id, "target": chat}, sort_keys=True))
+    else:
+        print(f"Queued notification #{row_id} for control chat '{chat}'.")
+    return 0
+
+
 def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int:
     config = load_config(config_path)
     client = make_message_client(config.beeper)
@@ -453,6 +479,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_ask(config_path, args.question, args.limit, args.json)
         if args.command == "serve":
             return cmd_serve(config_path, args.once, args.json)
+        if args.command == "notify":
+            return cmd_notify(config_path, args.text, args.chat, args.json)
         if args.command == "index-media":
             from .media import run_derivation_pass
 

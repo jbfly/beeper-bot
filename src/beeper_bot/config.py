@@ -100,6 +100,27 @@ class ChatSetConfig:
 
 
 @dataclass(slots=True)
+class ControlChatConfig:
+    """One purpose-scoped control chat the serve loop listens to.
+
+    The bot polls every configured control chat, each with its own cursor,
+    persona, and command set. `beeper.control_chat_id` is preserved as an alias
+    for a chat named "main" (see `resolved_control_chats`), so single-chat
+    configs keep working unchanged.
+
+    - persona: a literal system directive prepended to free-text (`ask`)
+      answers in this chat (e.g. "You are a PT-PT ↔ EN translation and drafting
+      assistant."). Empty = default assistant behavior.
+    - allowed_commands: restrict which command modes this chat honors (mode
+      names like "ask", "find", "catchup", "music"). Empty = all commands.
+    """
+    name: str
+    chat_id: str
+    persona: str = ""
+    allowed_commands: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class SecurityConfig:
     allow_web_search: bool = False
     log_raw_messages: bool = False
@@ -115,6 +136,7 @@ class AppConfig:
     bridge: BridgeConfig = field(default_factory=BridgeConfig)
     media: MediaConfig = field(default_factory=MediaConfig)
     chat_sets: dict[str, ChatSetConfig] = field(default_factory=dict)
+    control_chats: dict[str, ControlChatConfig] = field(default_factory=dict)
     security: SecurityConfig = field(default_factory=SecurityConfig)
 
     @property
@@ -206,6 +228,48 @@ def _chat_sets_value(raw: dict[str, Any]) -> dict[str, ChatSetConfig]:
     return result
 
 
+def _control_chats_value(raw: dict[str, Any]) -> dict[str, ControlChatConfig]:
+    result: dict[str, ControlChatConfig] = {}
+    for key, value in raw.items():
+        name = str(key)
+        if not isinstance(value, dict):
+            raise ConfigError(f"Config section [control_chats.{name}] must be a table")
+        chat_id = str(value.get("chat_id", "") or "").strip()
+        if not chat_id:
+            raise ConfigError(f"[control_chats.{name}] requires a chat_id")
+        result[name] = ControlChatConfig(
+            name=name,
+            chat_id=chat_id,
+            persona=str(value.get("persona", "") or ""),
+            allowed_commands=_str_list_value(value, "allowed_commands", []),
+        )
+    return result
+
+
+def resolved_control_chats(config: AppConfig) -> list[ControlChatConfig]:
+    """The control chats the serve loop should poll, in a stable order.
+
+    `beeper.control_chat_id` is treated as an implicit `main` control chat so
+    single-chat configs (and every existing deployment) keep working. If a
+    `[control_chats.main]` is also defined it wins; the legacy id only fills in
+    a `main` entry that isn't otherwise present.
+    """
+    chats = dict(config.control_chats)
+    legacy = config.beeper.control_chat_id.strip()
+    if legacy and "main" not in chats:
+        chats["main"] = ControlChatConfig(name="main", chat_id=legacy)
+    # De-duplicate by chat_id (a legacy id equal to a named chat's id would
+    # otherwise be polled twice), keeping the first (named) definition.
+    seen: set[str] = set()
+    ordered: list[ControlChatConfig] = []
+    for chat in chats.values():
+        if chat.chat_id in seen:
+            continue
+        seen.add(chat.chat_id)
+        ordered.append(chat)
+    return ordered
+
+
 def load_config(path: Path | str | None = None) -> AppConfig:
     config_path = Path(path).expanduser() if path else DEFAULT_CONFIG_PATH
     raw: dict[str, Any] = {}
@@ -220,6 +284,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
     bridge_raw = _get_table(raw, "bridge")
     media_raw = _get_table(raw, "media")
     chat_sets_raw = _get_table(raw, "chat_sets")
+    control_chats_raw = _get_table(raw, "control_chats")
     security_raw = _get_table(raw, "security")
 
     config = AppConfig(
@@ -274,6 +339,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
             auto_derive_per_cycle=_int_value(media_raw, "auto_derive_per_cycle", 3),
         ),
         chat_sets=_chat_sets_value(chat_sets_raw),
+        control_chats=_control_chats_value(control_chats_raw),
         security=SecurityConfig(
             allow_web_search=_bool_value(security_raw, "allow_web_search", False),
             log_raw_messages=_bool_value(security_raw, "log_raw_messages", False),

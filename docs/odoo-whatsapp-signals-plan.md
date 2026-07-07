@@ -48,7 +48,10 @@ group chats mixing several clients). Plan:
   awaiting response, leads gone quiet. Bot posts a chase list into a "Business" control
   chat with a drafted PT message per item (shares the drafting/register machinery with
   the translation plan). Owner approves item by item; approved drafts are copy-paste
-  at first.
+  at first. **The "Business" control chat is now free to create** — the
+  purpose-scoped `[control_chats.*]` keystone shipped 2026-07-07 (see the
+  translation plan and AGENTS.md §8); O3 can also use `beeper-bot notify --chat
+  business "…"` to push a cron-generated chase list into that chat.
 - **O4 — assisted send.** After O3 has earned trust: "send 2 and 3" → bot sends via
   Beeper `send_message` to the mapped chat, then writes the sent message back to Odoo
   as a log note. Per-chat allowlist, confirmation always, rate-limited.

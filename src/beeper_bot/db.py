@@ -11,7 +11,7 @@ from typing import Iterator
 from .config import AppConfig, ensure_private_dir, ensure_private_file
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 @dataclass(slots=True)
@@ -225,6 +225,14 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL,
             UNIQUE(message_id, attachment_id)
         );
+
+        CREATE TABLE IF NOT EXISTS outbound_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target TEXT NOT NULL,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            sent_at TEXT
+        );
         COMMIT;
         """
     )
@@ -412,6 +420,27 @@ def migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version >= 7:
+        return
+    conn.executescript(
+        """
+        BEGIN;
+        CREATE TABLE IF NOT EXISTS outbound_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target TEXT NOT NULL,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            sent_at TEXT
+        );
+        COMMIT;
+        """
+    )
+    conn.execute("PRAGMA user_version = 7")
+    conn.commit()
+
+
 def init_db_path(db_path: Path) -> None:
     ensure_private_dir(db_path.parent)
     ensure_private_file(db_path)
@@ -430,6 +459,8 @@ def init_db_path(db_path: Path) -> None:
             migrate_v4_to_v5(conn)
         if version <= 5:
             migrate_v5_to_v6(conn)
+        if version <= 6:
+            migrate_v6_to_v7(conn)
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
@@ -457,6 +488,46 @@ def get_runtime_state(conn: sqlite3.Connection, key: str) -> str | None:
     if row is None:
         return None
     return str(row[0])
+
+
+def enqueue_outbound(conn: sqlite3.Connection, target: str, text: str) -> int:
+    """Queue a message for the serve loop to deliver to a control chat.
+
+    This is the primitive behind `beeper-bot notify`: any homelab script can
+    append a fire-and-forget message (a download finished, a backup failed, an
+    alert) without holding a live Matrix client. The running serve loop drains
+    the queue and sends via its already-open transport, so delivery survives the
+    bot being momentarily down.
+    """
+    now = utc_now()
+    cur = conn.execute(
+        "INSERT INTO outbound_queue(target, text, created_at) VALUES (?, ?, ?)",
+        (target.strip() or "main", text, now),
+    )
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def fetch_unsent_outbound(conn: sqlite3.Connection, limit: int = 20) -> list[dict[str, str]]:
+    rows = conn.execute(
+        """
+        SELECT id, target, text
+        FROM outbound_queue
+        WHERE sent_at IS NULL
+        ORDER BY id ASC
+        LIMIT ?
+        """,
+        (max(1, int(limit)),),
+    ).fetchall()
+    return [{"id": int(row["id"]), "target": str(row["target"]), "text": str(row["text"])} for row in rows]
+
+
+def mark_outbound_sent(conn: sqlite3.Connection, row_id: int) -> None:
+    conn.execute(
+        "UPDATE outbound_queue SET sent_at = ? WHERE id = ?",
+        (utc_now(), int(row_id)),
+    )
+    conn.commit()
 
 
 def latest_sync_timestamp(conn: sqlite3.Connection) -> str | None:
@@ -519,7 +590,7 @@ def collect_runtime_status(config: AppConfig) -> RuntimeStatus:
     return RuntimeStatus(
         database=collect_database_stats(config.archive.path),
         config_path=config.config_path,
-        control_chat_configured=bool(config.beeper.control_chat_id.strip()),
+        control_chat_configured=bool(config.beeper.control_chat_id.strip() or config.control_chats),
         indexed_chat_count=len(config.beeper.indexed_chat_ids),
         beeper_api_base=config.beeper.api_base,
         llm_base_url=config.llm.base_url,

@@ -9,8 +9,17 @@ from typing import Protocol
 
 from .beeper_api import BeeperApiClient, make_message_client
 from .catchup import CatchupError, catchup_summary, format_catchup_result
-from .config import AppConfig, ConfigError
-from .db import get_runtime_state, init_db_path, latest_sync_timestamp, open_db, set_runtime_state, utc_now
+from .config import AppConfig, ConfigError, ControlChatConfig, resolved_control_chats
+from .db import (
+    fetch_unsent_outbound,
+    get_runtime_state,
+    init_db_path,
+    latest_sync_timestamp,
+    mark_outbound_sent,
+    open_db,
+    set_runtime_state,
+    utc_now,
+)
 from .discovery import add_dynamic_indexed_chat_ids, effective_indexed_chat_ids, match_unindexed_chats
 from .llm import LlmError, ask_archive, format_ask_response
 from .memory import (
@@ -36,6 +45,14 @@ def log(message: str) -> None:
 
 CONTROL_CURSOR_KEY = "control_chat_last_seen_sort_key"
 DEFAULT_STALE_SECONDS = 30
+
+
+def _control_cursor_key(chat_id: str) -> str:
+    """Per-control-chat cursor key. Each purpose-scoped chat tracks its own
+    last-seen sort key so they advance independently. (The pre-multi-chat build
+    used a single global key; the main chat simply re-seeds to 'now' on first
+    poll under the new key — no re-answering of old messages.)"""
+    return f"{CONTROL_CURSOR_KEY}:{chat_id}"
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 MD_HEADER_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$")
@@ -188,14 +205,23 @@ class ControlBridge:
         self.busy = False
         self._chat_listing: list[dict] = []
         self._chat_listing_at: float = 0.0
-        log(f"bridge init control_chat={config.beeper.control_chat_id or 'unset'} indexed_chats={len(config.beeper.indexed_chat_ids)}")
+        self.control_chats = resolved_control_chats(config)
+        # The control chat currently being processed. Set at the top of each
+        # per-chat pass so _reply / cursor / persona all resolve against it.
+        self._active: ControlChatConfig | None = None
+        names = ", ".join(f"{c.name}={c.chat_id}" for c in self.control_chats) or "unset"
+        log(f"bridge init control_chats=[{names}] indexed_chats={len(config.beeper.indexed_chat_ids)}")
 
     @property
     def control_chat_id(self) -> str:
-        chat_id = self.config.beeper.control_chat_id.strip()
-        if not chat_id:
-            raise ConfigError("beeper.control_chat_id is required for serve mode")
-        return chat_id
+        if self._active is not None:
+            return self._active.chat_id
+        if not self.control_chats:
+            raise ConfigError(
+                "A control chat is required for serve mode: set beeper.control_chat_id "
+                "or define at least one [control_chats.*]"
+            )
+        return self.control_chats[0].chat_id
 
     def _message_text(self, message: dict) -> str:
         raw = str(message.get("text", "") or "")
@@ -238,10 +264,11 @@ class ControlBridge:
         if latest is None:
             return []
 
+        cursor_key = _control_cursor_key(self.control_chat_id)
         with open_db(self.config.archive.path) as conn:
-            cursor = get_runtime_state(conn, CONTROL_CURSOR_KEY)
+            cursor = get_runtime_state(conn, cursor_key)
             if cursor is None:
-                set_runtime_state(conn, CONTROL_CURSOR_KEY, str(latest))
+                set_runtime_state(conn, cursor_key, str(latest))
                 return []
             last_seen = int(cursor)
 
@@ -251,7 +278,7 @@ class ControlBridge:
 
     def _store_cursor(self, sort_key: int) -> None:
         with open_db(self.config.archive.path) as conn:
-            set_runtime_state(conn, CONTROL_CURSOR_KEY, str(sort_key))
+            set_runtime_state(conn, _control_cursor_key(self.control_chat_id), str(sort_key))
 
     def _sync_is_stale(self) -> bool:
         with open_db(self.config.archive.path) as conn:
@@ -353,8 +380,11 @@ class ControlBridge:
 
     def _status_text(self) -> str:
         indexed = len(self.config.beeper.indexed_chat_ids)
+        chats_note = f"control_chat={self.control_chat_id}"
+        if len(self.control_chats) > 1:
+            chats_note += f" (control_chats={len(self.control_chats)}: {', '.join(c.name for c in self.control_chats)})"
         return (
-            f"{self.config.bridge.reply_prefix}Bridge ready. control_chat={self.control_chat_id}, "
+            f"{self.config.bridge.reply_prefix}Bridge ready. {chats_note}, "
             f"indexed_chats={indexed}, archive={self.config.archive.path}, llm={self.config.llm.model}"
         )
 
@@ -440,12 +470,14 @@ class ControlBridge:
 
             self._maybe_sync(quick=True)
             indexed_names = self._maybe_index_for_question(command.text)
+            persona = self._active.persona if self._active is not None else ""
             try:
                 response = ask_archive(
                     self.config,
                     command.text,
-                    control_turns=recent_control_turns(self.config, limit=8),
+                    control_turns=recent_control_turns(self.config, limit=8, chat_id=self.control_chat_id),
                     memory_state=load_memory_state(self.config),
+                    persona=persona,
                 )
             except LlmError as exc:
                 lowered = str(exc).lower()
@@ -462,14 +494,50 @@ class ControlBridge:
             return self._handle_music(command.text)
         raise RuntimeError(f"Unknown command mode: {command.mode}")
 
+    def _command_allowed(self, chat: ControlChatConfig, mode: str) -> bool:
+        """A chat with a non-empty allowed_commands list only honors those modes
+        (plus the always-safe help/status). Empty list = all commands."""
+        if not chat.allowed_commands:
+            return True
+        return mode in chat.allowed_commands or mode in ("help", "status")
+
     def process_once(self) -> BridgeLoopResult:
         init_db_path(self.config.archive.path)
-        messages = self.api_client.fetch_messages(self.control_chat_id)
+        self._drain_outbound()
+
+        total = BridgeLoopResult(0, 0, 0)
+        replied_any = False
+        for chat in self.control_chats:
+            self._active = chat
+            try:
+                result = self._process_control_chat(chat)
+            finally:
+                self._active = None
+            total = BridgeLoopResult(
+                total.processed_messages + result.processed_messages,
+                total.replied_messages + result.replied_messages,
+                total.busy_messages + result.busy_messages,
+            )
+            if result.replied_messages:
+                replied_any = True
+
+        if replied_any:
+            try:
+                summary = maybe_refresh_control_summary(self.config)
+                if summary:
+                    log(f"control summary refreshed chars={len(summary)}")
+            except Exception as exc:
+                log(f"control summary refresh failed: {exc}")
+
+        return total
+
+    def _process_control_chat(self, chat: ControlChatConfig) -> BridgeLoopResult:
+        messages = self.api_client.fetch_messages(chat.chat_id)
         fresh = self._fresh_messages(messages)
         if not fresh:
             return BridgeLoopResult(0, 0, 0)
 
-        log(f"poll fresh_messages={len(fresh)}")
+        log(f"poll chat={chat.name} fresh_messages={len(fresh)}")
 
         processed = 0
         replied = 0
@@ -485,6 +553,12 @@ class ControlBridge:
             if command.mode == "ignore":
                 self._store_cursor(sort_key)
                 continue
+            if not self._command_allowed(chat, command.mode):
+                # A purpose-scoped chat silently ignores commands outside its
+                # allowlist (keeps feed-style chats quiet); no reply.
+                log(f"message not-allowed chat={chat.name} mode={command.mode}")
+                self._store_cursor(sort_key)
+                continue
             if self.busy:
                 log(f"message busy sort_key={sort_key} mode={command.mode}")
                 self._reply(f"{self.config.bridge.reply_prefix}Busy. Try again in a moment.")
@@ -493,12 +567,13 @@ class ControlBridge:
                 continue
 
             self.busy = True
-            log(f"message handle sort_key={sort_key} mode={command.mode}")
+            log(f"message handle chat={chat.name} sort_key={sort_key} mode={command.mode}")
             try:
                 with trace_context(self.config, command.mode, question=text, source="beeper-control") as trace:
                     trace_event("bridge.message", {
                         "sort_key": sort_key,
                         "mode": command.mode,
+                        "chat": chat.name,
                         "message_id": str(message.get("id") or ""),
                         "text": text,
                     })
@@ -524,15 +599,38 @@ class ControlBridge:
                 self.busy = False
                 self._store_cursor(sort_key)
 
-        if replied:
-            try:
-                summary = maybe_refresh_control_summary(self.config)
-                if summary:
-                    log(f"control summary refreshed chars={len(summary)}")
-            except Exception as exc:
-                log(f"control summary refresh failed: {exc}")
-
         return BridgeLoopResult(processed, replied, busy_messages)
+
+    def _drain_outbound(self) -> None:
+        """Deliver queued `beeper-bot notify` messages to their target control
+        chats via the already-open transport. Unresolvable targets are dropped
+        (marked sent); transient send failures are left queued for retry."""
+        with open_db(self.config.archive.path) as conn:
+            pending = fetch_unsent_outbound(conn, limit=20)
+        if not pending:
+            return
+        by_name = {c.name: c.chat_id for c in self.control_chats}
+        known_ids = {c.chat_id for c in self.control_chats}
+        for row in pending:
+            target = str(row["target"]).strip() or "main"
+            chat_id = by_name.get(target)
+            if chat_id is None:
+                # Allow addressing a raw chat id directly; otherwise fall back to
+                # the first control chat so a notification is never silently lost.
+                chat_id = target if target in known_ids else (self.control_chats[0].chat_id if self.control_chats else None)
+            if not chat_id:
+                with open_db(self.config.archive.path) as conn:
+                    mark_outbound_sent(conn, row["id"])
+                continue
+            try:
+                for part in split_message(str(row["text"]), self.config.bridge.max_reply_chars, self.config.bridge.max_reply_parts):
+                    self.api_client.send_message(chat_id, part)
+            except Exception as exc:
+                log(f"outbound deliver failed id={row['id']} target={target}: {exc}")
+                continue  # leave queued; retry next cycle
+            with open_db(self.config.archive.path) as conn:
+                mark_outbound_sent(conn, row["id"])
+            log(f"outbound delivered id={row['id']} target={target}")
 
     def _auto_derive_media(self) -> None:
         """Transcribe/describe a few new attachments per sync cycle so media

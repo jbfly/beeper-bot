@@ -43,6 +43,34 @@ auto_derive_per_cycle = 3
 # aliases = ["neighborhood", "neighbors"]
 # chats = ["Neighborhood Planning", "Building Updates"]
 
+# Purpose-scoped control chats. The bot polls every chat listed here, each with
+# its own cursor, persona, and command set. `beeper.control_chat_id` above is
+# still honored as an implicit `main` chat, so you can add these incrementally.
+# Make a new Beeper "note to self" chat, invite the bot's user into it, then put
+# its chat id here. Mint as many as you like.
+#
+# persona:          a literal system directive prepended to free-text answers in
+#                   this chat (empty = default assistant).
+# allowed_commands: restrict which command modes this chat honors (mode names:
+#                   ask, find, catchup, index, music, status, help, reindex).
+#                   Empty/omitted = all commands. help/status are always allowed.
+#
+# [control_chats.main]
+# chat_id = "!yourmainroom:beeper.local"
+#
+# [control_chats.translate]
+# chat_id = "!yourtranslateroom:beeper.local"
+# persona = "You are a European-Portuguese ↔ English translation and drafting assistant. Give the translation, then a short note on tone/idiom, then a suggested reply if asked."
+#
+# [control_chats.cams]
+# chat_id = "!yourcamsroom:beeper.local"
+# allowed_commands = ["status"]   # a quiet feed chat: ignore ad-hoc questions
+
+# Outbound notifications: any homelab script can post a fire-and-forget message
+# to a control chat with `beeper-bot notify "text" [--chat <name>]`. It queues the
+# message; the running serve loop delivers it to the named control chat (default
+# "main"). From another machine: `ssh venus beeper-bot notify "backup failed"`.
+
 [security]
 allow_web_search = false
 log_raw_messages = false

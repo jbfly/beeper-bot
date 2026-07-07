@@ -54,6 +54,7 @@ class FakeLlmClient:
         evidence: list[EvidenceItem],
         person_context: str = "",
         control_context: str = "",
+        persona: str = "",
     ) -> str:
         return self.answer
 
