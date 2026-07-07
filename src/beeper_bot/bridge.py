@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
-from .beeper_api import BeeperApiClient
+from .beeper_api import BeeperApiClient, make_message_client
 from .catchup import CatchupError, catchup_summary, format_catchup_result
 from .config import AppConfig, ConfigError
 from .db import get_runtime_state, init_db_path, latest_sync_timestamp, open_db, set_runtime_state, utc_now
@@ -184,7 +184,7 @@ class BridgeLoopResult:
 class ControlBridge:
     def __init__(self, config: AppConfig, api_client: BridgeApiClient | None = None):
         self.config = config
-        self.api_client = api_client or BeeperApiClient(config.beeper)
+        self.api_client = api_client or make_message_client(config.beeper)
         self.busy = False
         self._chat_listing: list[dict] = []
         self._chat_listing_at: float = 0.0

@@ -32,6 +32,11 @@ class BeeperConfig:
     http_timeout_seconds: int = 30
     auto_index_recent_days: int = 0
     auto_index_max_chats: int = 100
+    # transport backend: "desktop-api" (Beeper Desktop HTTP API, default) or
+    # "matrix" (direct matrix-nio client on venus). See matrix_transport.py.
+    transport: str = "desktop-api"
+    matrix_credentials_file: Path | None = None
+    matrix_store_path: Path | None = None
 
 
 @dataclass(slots=True)
@@ -212,6 +217,9 @@ def load_config(path: Path | str | None = None) -> AppConfig:
             http_timeout_seconds=_int_value(beeper_raw, "http_timeout_seconds", 30),
             auto_index_recent_days=_int_value(beeper_raw, "auto_index_recent_days", 0),
             auto_index_max_chats=_int_value(beeper_raw, "auto_index_max_chats", 100),
+            transport=str(beeper_raw.get("transport", "desktop-api")),
+            matrix_credentials_file=_path_value(beeper_raw, "matrix_credentials_file", Path("")) if beeper_raw.get("matrix_credentials_file") else None,
+            matrix_store_path=_path_value(beeper_raw, "matrix_store_path", Path("")) if beeper_raw.get("matrix_store_path") else None,
         ),
         archive=ArchiveConfig(
             path=_path_value(archive_raw, "path", DEFAULT_DB_PATH),

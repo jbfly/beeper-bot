@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .beeper_api import BeeperApiClient, BeeperApiError
+from .beeper_api import BeeperApiClient, BeeperApiError, make_message_client
 from .bridge import ControlBridge
 from .config import DEFAULT_CONFIG_PATH, ConfigError, load_config
 from .console import serve_console
@@ -184,7 +184,7 @@ def cmd_sync(config_path: Path, chat_ids: list[str] | None, as_json: bool) -> in
     if not target_chat_ids:
         raise ConfigError("No indexed chats configured and no --chat-id values supplied")
 
-    client = BeeperApiClient(config.beeper)
+    client = make_message_client(config.beeper)
     result = sync_chats(config, client, target_chat_ids)
     payload = {
         "ok": True,
@@ -330,7 +330,7 @@ def cmd_serve(config_path: Path, once: bool, as_json: bool) -> int:
 
 def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int:
     config = load_config(config_path)
-    client = BeeperApiClient(config.beeper)
+    client = make_message_client(config.beeper)
     all_chats = client.fetch_all_chats()
 
     if query_filter:

@@ -132,30 +132,60 @@ sessions). Notes for whoever repeats this:
 ## What remains — the transport migration
 
 The bridges are done. The remaining work is moving the **bot** onto the nio
-transport (the original handoff plan, now with concrete detail):
+transport (the original handoff plan). Progress so far:
 
-1. **`MatrixTransport` class** implementing the same surface `beeper_api.py`
-   exposes and that `bridge.py` / `sync.py` / `media.py` consume:
-   `fetch_all_chats`, `fetch_chat`, `fetch_messages` / `fetch_messages_page`
-   (with cursor/direction paging → map to Matrix `/messages` pagination),
-   `send_message`. Wrap the nio client; keep the return shapes identical so the
-   rest of the pipeline is untouched.
-2. **Attachment fetch/decrypt.** Today `media.py` relies on Beeper Desktop's
-   `/assets/serve?url=<mxc>` which downloads *and decrypts*. On Matrix the
-   transport must `download()` the mxc and decrypt the attachment (nio has the
-   helpers) itself.
-3. **Config toggle** to select the transport (e.g. `[beeper] transport =
-   "desktop-api" | "matrix"`), defaulting to desktop-api so alpha keeps working
-   until cutover. Point the `serve` loop at the selected transport.
-4. **Key-backup / history restore.** Restore the megolm backup
-   (`m.megolm_backup.v1`, present on the server) using the recovery key so the
-   device can decrypt pre-existing history — without this the archive can't be
-   built from Matrix. This is the main remaining unknown; the recovery-key →
-   SSSS path used for cross-signing already proves we can decrypt the backup
-   secret.
-5. **systemd on venus** next to the bridges; retire the Beeper-Desktop-on-alpha
-   dependency (AGENTS.md §2 runtime dep #1).
+### ✅ Done — `MatrixTransport` + config toggle (`src/beeper_bot/matrix_transport.py`)
 
-Until 1–5 land, the bot stays on alpha via the Desktop API. Nothing about the
-self-hosted bridges forces a bot change — the Desktop API keeps working because
-hungryserv now routes through our bridges transparently.
+- **`MatrixTransport`** implements the `beeper_api.py` surface
+  (`fetch_all_chats`, `fetch_chat`, `fetch_messages` / `fetch_messages_page`,
+  `send_message`) and returns the same dict shapes `sync.py` / `bridge.py` /
+  `discovery.py` already consume (id/title/lastActivity; sortKey/type/text/
+  senderID/senderName/isSender/attachments). `sortKey` = event
+  `origin_server_ts`. It runs a persistent nio client on its own event loop in a
+  daemon thread and marshals sync calls across with `run_coroutine_threadsafe`.
+- **Config toggle** `[beeper] transport = "desktop-api" | "matrix"` (default
+  desktop-api), plus `matrix_credentials_file` / `matrix_store_path`. A factory
+  `beeper_api.make_message_client(config.beeper)` returns the right client and is
+  wired into `cli.py` (sync/chats) and `bridge.py`. nio is imported lazily so the
+  default runtime stays dependency-free and the offline tests never touch it.
+- **Two hungryserv quirks handled** (both verified live):
+  - Incremental sync omits quiet rooms → force a **full initial sync**
+    (`loaded_sync_token=""`, `next_batch=None`) so every room (incl. the control
+    chat) is known.
+  - `/messages` rejects the **global** sync token as `from` but accepts each
+    room's **`prev_batch`**. So the first page is served from a live per-room
+    buffer (kept current by `sync_forever` response callbacks — note those
+    callbacks do **not** fire on the manual initial `sync()`, so the initial
+    response is ingested by hand), and history pages paginate from the stored
+    per-room `prev_batch`. Beeper's sync dedups by message id, so buffer/history
+    overlap is harmless.
+- **Verified live** on venus: 251 rooms enumerated, control chat read,
+  first-page + history pagination, text and image message mapping. Offline unit
+  tests in `tests/test_transport.py` cover the config toggle + factory.
+- **Python version:** nio's `python-olm` builds on **3.11 / 3.12** but **not
+  3.13 / 3.14**. The bot uses `tomllib` (3.11+). So the venus deployment must run
+  on **Python 3.12** (3.11 also works). alpha's current 3.14 env cannot host the
+  matrix transport.
+
+### ⛔ Still to do
+
+1. **Attachment fetch/decrypt.** `media.py` still uses Beeper Desktop's
+   `/assets/serve?url=<mxc>` (downloads *and* decrypts). Under `transport=matrix`
+   the transport must `download()` the mxc and decrypt itself — nio has the
+   helpers, and the message dicts already carry `attachments[].encFile` (the
+   MSC3244 file block with keys) for exactly this. Route `media.fetch_attachment`
+   through the transport when it is a `MatrixTransport`.
+2. **Key-backup / history restore.** The device can't decrypt history from before
+   it joined (shows as undecryptable; e.g. a group chat's first page comes back
+   empty). Restore the megolm backup (`m.megolm_backup.v1`, present server-side)
+   using the recovery key so the archive can be built from Matrix. Main remaining
+   unknown; the recovery-key → SSSS path used for cross-signing already proves we
+   can decrypt the backup secret.
+3. **Cut over on venus:** a Python 3.12 venv with `matrix-nio[e2e]`, set
+   `transport = "matrix"`, and a `beeper-bot.service` systemd user unit next to
+   the bridges; then retire the Beeper-Desktop-on-alpha dependency
+   (AGENTS.md §2 runtime dep #1).
+
+Until these land, the bot stays on alpha via the Desktop API (default toggle).
+Nothing about the self-hosted bridges forces a bot change — the Desktop API keeps
+working because hungryserv now routes through our bridges transparently.

@@ -131,3 +131,16 @@ class BeeperApiClient:
     def send_message(self, chat_id: str, text: str) -> None:
         quoted = parse.quote(chat_id, safe="")
         self._request("POST", f"/chats/{quoted}/messages", {"text": text})
+
+
+def make_message_client(config: BeeperConfig):
+    """Return the configured transport: Beeper Desktop API or matrix-nio.
+
+    Both expose the same fetch_all_chats / fetch_chat / fetch_messages[_page] /
+    send_message surface, so callers are transport-agnostic.
+    """
+    if getattr(config, "transport", "desktop-api") == "matrix":
+        from .matrix_transport import MatrixTransport
+
+        return MatrixTransport(config)
+    return BeeperApiClient(config)

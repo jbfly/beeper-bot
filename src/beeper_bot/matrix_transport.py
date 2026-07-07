@@ -1,0 +1,326 @@
+"""Matrix (matrix-nio) transport implementing the beeper_api.py surface.
+
+This is the venus-side replacement for the Beeper Desktop HTTP API: it talks
+straight to Beeper's homeserver (hungryserv) as a dedicated, cross-signed
+Matrix device, so the bot can run headless next to the self-hosted bridges
+instead of depending on Beeper Desktop's GUI on alpha. See
+docs/self-hosted-bridges-and-matrix-migration.md.
+
+Design notes
+------------
+- matrix-nio is async; the rest of the bot is synchronous. We run a single
+  persistent AsyncClient on its own event loop in a daemon thread and marshal
+  each call across with run_coroutine_threadsafe. Keeping one client alive
+  preserves the E2EE store, sync token, and room state between calls (a fresh
+  client per call would re-sync every time).
+- The returned chat/message dicts mirror the Beeper Desktop payload shape that
+  sync.py / bridge.py / discovery.py already consume (id/title/lastActivity;
+  sortKey/type/text/senderID/senderName/isSender/attachments). sortKey is the
+  event's origin_server_ts (monotonic per room; ties break on message_id).
+- Encrypted history the device has no megolm key for is skipped (shows up as
+  undecryptable). Restoring the key backup is a separate step; until then the
+  archive only sees messages sent after the device joined.
+- nio requires Python 3.10 for python-olm; imports are lazy so this module can
+  be imported anywhere without pulling nio into the default runtime.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import threading
+from collections import deque
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from .beeper_api import BeeperApiError, MessagePage
+from .config import BeeperConfig
+
+DEFAULT_CREDENTIALS = Path.home() / ".config" / "beeper-bot" / "matrix-credentials.json"
+DEFAULT_STORE = Path.home() / ".local" / "state" / "beeper-bot" / "matrix-store"
+
+# How many events a single /messages page pulls when no explicit limit applies.
+_PAGE_LIMIT = 500
+
+
+def _iso(ts_ms: int) -> str:
+    if not ts_ms:
+        return ""
+    return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
+
+
+class MatrixTransport:
+    """Synchronous facade over a persistent matrix-nio client."""
+
+    def __init__(self, config: BeeperConfig):
+        self.config = config
+        creds_path = Path(config.matrix_credentials_file or DEFAULT_CREDENTIALS)
+        if not creds_path.exists():
+            raise BeeperApiError(f"Matrix credentials not found: {creds_path}")
+        self._creds = json.loads(creds_path.read_text())
+        self._store = Path(config.matrix_store_path or DEFAULT_STORE)
+        self._store.mkdir(parents=True, exist_ok=True)
+        self._own_id = str(self._creds["user_id"])
+        # room_id -> last event origin_server_ts (ms), maintained by the sync loop
+        self._last_activity: dict[str, int] = {}
+        # room_id -> recent mapped messages (live tail from sync), newest last
+        self._recent: dict[str, deque] = {}
+        # room_id -> backward pagination token (per-room prev_batch); hungryserv
+        # rejects the global sync token as a /messages `from`, so we seed each
+        # room's history walk with the prev_batch captured when we first saw it.
+        self._back_token: dict[str, str] = {}
+        self._recent_cap = 400
+        self._ready = threading.Event()
+        self._start_error: BaseException | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._client = None
+        self._thread = threading.Thread(target=self._run_loop, name="matrix-transport", daemon=True)
+        self._thread.start()
+        if not self._ready.wait(timeout=float(config.http_timeout_seconds * 4 or 120)):
+            raise BeeperApiError("Matrix transport did not become ready in time")
+        if self._start_error is not None:
+            raise BeeperApiError(f"Matrix transport failed to start: {self._start_error}")
+
+    # ---- event loop / client lifecycle -------------------------------------
+
+    def _run_loop(self) -> None:
+        try:
+            loop = asyncio.new_event_loop()
+            self._loop = loop
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self._bootstrap())
+        except BaseException as exc:  # surface to constructor
+            self._start_error = exc
+            self._ready.set()
+            return
+        # keep serving calls + background sync until the process exits
+        loop.run_forever()
+
+    async def _bootstrap(self) -> None:
+        from nio import AsyncClient, AsyncClientConfig, SyncResponse
+
+        cfg = AsyncClientConfig(store_sync_tokens=True, encryption_enabled=True)
+        client = AsyncClient(
+            self._creds["homeserver"],
+            self._creds["user_id"],
+            device_id=self._creds["device_id"],
+            store_path=str(self._store),
+            config=cfg,
+        )
+        client.restore_login(
+            user_id=self._creds["user_id"],
+            device_id=self._creds["device_id"],
+            access_token=self._creds["access_token"],
+        )
+        self._client = client
+        # Response callbacks only fire inside sync_forever, not the manual
+        # sync() below, so we ingest the initial response by hand and let the
+        # callback handle every sync after that.
+        client.add_response_callback(self._on_sync, SyncResponse)
+
+        # hungryserv incremental sync only returns recently-active rooms, so a
+        # resumed sync token hides quiet rooms (e.g. the control chat). Force a
+        # full initial sync so every joined room is known before we serve calls.
+        client.loaded_sync_token = ""
+        client.next_batch = None
+        resp = await client.sync(timeout=30000, full_state=True)
+        self._ingest_sync(resp)
+        if client.should_upload_keys:
+            await client.keys_upload()
+        self._ready.set()
+        # background sync keeps rooms/timelines and to-device (keys) current
+        asyncio.create_task(client.sync_forever(timeout=30000, full_state=False))
+
+    async def _on_sync(self, response) -> None:
+        self._ingest_sync(response)
+
+    def _ingest_sync(self, response) -> None:
+        """Capture per-room recent messages, last-activity, and back-tokens."""
+        join = getattr(getattr(response, "rooms", None), "join", None) or {}
+        for room_id, joined in join.items():
+            room = self._client.rooms.get(room_id)
+            timeline = joined.timeline
+            # first time we see the room, remember the token to walk older history
+            if room_id not in self._back_token and getattr(timeline, "prev_batch", None):
+                self._back_token[room_id] = timeline.prev_batch
+            buf = self._recent.setdefault(room_id, deque(maxlen=self._recent_cap))
+            for event in timeline.events:
+                ts = getattr(event, "server_timestamp", 0) or 0
+                if ts > self._last_activity.get(room_id, 0):
+                    self._last_activity[room_id] = ts
+                if room is not None:
+                    mapped = self._event_to_message(room, event)
+                    if mapped is not None:
+                        buf.append(mapped)
+
+    def _submit(self, coro):
+        if self._loop is None:
+            raise BeeperApiError("Matrix transport loop not running")
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=float(self.config.http_timeout_seconds * 4 or 120))
+
+    # ---- mapping -----------------------------------------------------------
+
+    def _display_name(self, room, mxid: str) -> str:
+        try:
+            name = room.user_name(mxid)
+        except Exception:
+            name = None
+        return str(name or mxid)
+
+    def _event_to_message(self, room, event) -> dict[str, Any] | None:
+        """Map a nio timeline event to a Beeper-shaped message dict, or None."""
+        from nio import (
+            RoomMessageText,
+            RoomMessageNotice,
+            RoomMessageEmote,
+            RoomMessageImage,
+            RoomMessageAudio,
+            RoomMessageVideo,
+            RoomMessageFile,
+        )
+
+        text_types = (RoomMessageText, RoomMessageNotice, RoomMessageEmote)
+        media_map = [
+            (RoomMessageImage, "IMAGE", "img"),
+            (RoomMessageAudio, "VOICE", "audio"),
+            (RoomMessageVideo, "VIDEO", "video"),
+            (RoomMessageFile, "FILE", "file"),
+        ]
+        sender = getattr(event, "sender", "") or ""
+        ts = getattr(event, "server_timestamp", 0) or 0
+        event_id = getattr(event, "event_id", "") or ""
+        base = {
+            "id": event_id,
+            "messageID": event_id,
+            "sortKey": int(ts),
+            "timestamp": _iso(int(ts)),
+            "senderID": sender,
+            "senderName": self._display_name(room, sender),
+            "isSender": sender == self._own_id,
+        }
+        if isinstance(event, text_types):
+            base["type"] = "TEXT"
+            base["text"] = getattr(event, "body", "") or ""
+            return base
+        for cls, beeper_type, att_type in media_map:
+            if isinstance(event, cls):
+                src = getattr(event, "source", {}) or {}
+                content = src.get("content", {}) if isinstance(src, dict) else {}
+                info = content.get("info", {}) if isinstance(content, dict) else {}
+                # mxc lives at content.url (plaintext) or content.file.url (encrypted)
+                mxc = content.get("url") or (content.get("file", {}) or {}).get("url") or getattr(event, "url", "")
+                body = getattr(event, "body", "") or content.get("body") or "attachment"
+                is_voice = "org.matrix.msc3245.voice" in content or "org.matrix.msc1767.audio" in content
+                base["type"] = beeper_type
+                base["text"] = None
+                base["attachments"] = [
+                    {
+                        "id": event_id,
+                        "srcURL": mxc,
+                        "fileName": body,
+                        "type": att_type,
+                        "mimeType": info.get("mimetype") or content.get("mimetype") or "",
+                        "fileSize": info.get("size") or 0,
+                        "isVoiceNote": bool(is_voice),
+                        # decryption material for encrypted attachments (step 2)
+                        "encFile": content.get("file"),
+                    }
+                ]
+                return base
+        # undecryptable megolm events / state / unknown → skip
+        return None
+
+    def _room_to_chat(self, room) -> dict[str, Any]:
+        return {
+            "id": room.room_id,
+            "title": room.display_name or room.room_id,
+            "name": room.display_name or room.room_id,
+            "lastActivity": _iso(self._last_activity.get(room.room_id, 0)),
+        }
+
+    # ---- async workers -----------------------------------------------------
+
+    async def _a_fetch_chat(self, chat_id: str) -> dict[str, Any]:
+        room = self._client.rooms.get(chat_id)
+        if room is None:
+            raise BeeperApiError(f"Unknown Matrix room: {chat_id}")
+        return self._room_to_chat(room)
+
+    async def _a_fetch_all_chats(self) -> list[dict[str, Any]]:
+        return [self._room_to_chat(r) for r in self._client.rooms.values()]
+
+    async def _a_fetch_messages_page(self, chat_id: str, cursor: str | None, direction: str | None) -> MessagePage:
+        from nio import MessageDirection, RoomMessagesError
+
+        room = self._client.rooms.get(chat_id)
+        if room is None:
+            raise BeeperApiError(f"Unknown Matrix room: {chat_id}")
+
+        # First page (no cursor): serve the live tail from the sync buffer and
+        # hand back the per-room token to walk older history. Beeper's sync
+        # dedups by message id, so any overlap with the first history page is
+        # harmless.
+        if not cursor:
+            buf = self._recent.get(chat_id) or deque()
+            items = list(buf)[-_PAGE_LIMIT:]
+            back = self._back_token.get(chat_id)
+            return MessagePage(
+                items=items,
+                has_more=bool(back),
+                oldest_cursor=back,
+                newest_cursor=None,
+            )
+
+        # History pages: paginate backward from the supplied per-room token.
+        resp = await self._client.room_messages(
+            chat_id,
+            start=cursor,
+            direction=MessageDirection.back,
+            limit=_PAGE_LIMIT,
+        )
+        if isinstance(resp, RoomMessagesError):
+            raise BeeperApiError(f"Matrix /messages failed for {chat_id}: {resp.message}")
+        items = []
+        for event in resp.chunk:
+            mapped = self._event_to_message(room, event)
+            if mapped is not None:
+                items.append(mapped)
+        # resp.end is the token to continue paginating backward (older); when the
+        # server returns no further events we are at the start of history.
+        has_more = bool(resp.end) and resp.end != cursor and bool(resp.chunk)
+        return MessagePage(
+            items=items,
+            has_more=has_more,
+            oldest_cursor=resp.end or None,
+            newest_cursor=resp.start or None,
+        )
+
+    async def _a_send_message(self, chat_id: str, text: str) -> None:
+        from nio import RoomSendError
+
+        resp = await self._client.room_send(
+            chat_id,
+            message_type="m.room.message",
+            content={"msgtype": "m.text", "body": text},
+            ignore_unverified_devices=True,
+        )
+        if isinstance(resp, RoomSendError):
+            raise BeeperApiError(f"Matrix send failed for {chat_id}: {resp.message}")
+
+    # ---- BeeperApiClient-compatible sync surface ---------------------------
+
+    def fetch_chat(self, chat_id: str) -> dict[str, Any]:
+        return self._submit(self._a_fetch_chat(chat_id))
+
+    def fetch_all_chats(self) -> list[dict[str, Any]]:
+        return self._submit(self._a_fetch_all_chats())
+
+    def fetch_messages_page(self, chat_id: str, cursor: str | None = None, direction: str | None = None) -> MessagePage:
+        return self._submit(self._a_fetch_messages_page(chat_id, cursor, direction))
+
+    def fetch_messages(self, chat_id: str) -> list[dict[str, Any]]:
+        return self.fetch_messages_page(chat_id).items
+
+    def send_message(self, chat_id: str, text: str) -> None:
+        self._submit(self._a_send_message(chat_id, text))
