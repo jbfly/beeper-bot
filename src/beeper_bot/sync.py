@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import sys
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -250,4 +251,12 @@ def sync_chat(config: AppConfig, client: SyncClient, chat_id: str) -> ChatSyncRe
 
 def sync_chats(config: AppConfig, client: SyncClient, chat_ids: list[str] | None = None) -> SyncResult:
     target_chat_ids = chat_ids or list(config.beeper.indexed_chat_ids)
-    return SyncResult(chats=[sync_chat(config, client, chat_id) for chat_id in target_chat_ids])
+    results: list[ChatSyncResult] = []
+    for chat_id in target_chat_ids:
+        try:
+            results.append(sync_chat(config, client, chat_id))
+        except Exception as exc:
+            # A single stale/deleted/left room (common after bridge changes)
+            # must not abort syncing the rest.
+            print(f"sync: skipping chat {chat_id}: {exc}", file=sys.stderr)
+    return SyncResult(chats=results)
