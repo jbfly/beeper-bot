@@ -46,6 +46,12 @@ DEFAULT_STORE = Path.home() / ".local" / "state" / "beeper-bot" / "matrix-store"
 # How many events a single /messages page pulls when no explicit limit applies.
 _PAGE_LIMIT = 500
 
+# Cap on the live per-room message buffer kept from sync.
+_RECENT_CAP = 400
+
+# Seconds to wait on a cross-thread transport call (and on startup readiness).
+_CALL_TIMEOUT = 120
+
 _BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 
@@ -79,14 +85,13 @@ class MatrixTransport:
         # rejects the global sync token as a /messages `from`, so we seed each
         # room's history walk with the prev_batch captured when we first saw it.
         self._back_token: dict[str, str] = {}
-        self._recent_cap = 400
         self._ready = threading.Event()
         self._start_error: BaseException | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._client = None
         self._thread = threading.Thread(target=self._run_loop, name="matrix-transport", daemon=True)
         self._thread.start()
-        if not self._ready.wait(timeout=float(config.http_timeout_seconds * 4 or 120)):
+        if not self._ready.wait(timeout=_CALL_TIMEOUT):
             raise BeeperApiError("Matrix transport did not become ready in time")
         if self._start_error is not None:
             raise BeeperApiError(f"Matrix transport failed to start: {self._start_error}")
@@ -146,14 +151,13 @@ class MatrixTransport:
 
     def _ingest_sync(self, response) -> None:
         """Capture per-room recent messages, last-activity, and back-tokens."""
-        join = getattr(getattr(response, "rooms", None), "join", None) or {}
-        for room_id, joined in join.items():
+        for room_id, joined in response.rooms.join.items():
             room = self._client.rooms.get(room_id)
             timeline = joined.timeline
             # first time we see the room, remember the token to walk older history
             if room_id not in self._back_token and getattr(timeline, "prev_batch", None):
                 self._back_token[room_id] = timeline.prev_batch
-            buf = self._recent.setdefault(room_id, deque(maxlen=self._recent_cap))
+            buf = self._recent.setdefault(room_id, deque(maxlen=_RECENT_CAP))
             for event in timeline.events:
                 ts = getattr(event, "server_timestamp", 0) or 0
                 if ts > self._last_activity.get(room_id, 0):
@@ -167,16 +171,12 @@ class MatrixTransport:
         if self._loop is None:
             raise BeeperApiError("Matrix transport loop not running")
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result(timeout=float(self.config.http_timeout_seconds * 4 or 120))
+        return future.result(timeout=_CALL_TIMEOUT)
 
     # ---- mapping -----------------------------------------------------------
 
     def _display_name(self, room, mxid: str) -> str:
-        try:
-            name = room.user_name(mxid)
-        except Exception:
-            name = None
-        return str(name or mxid)
+        return str(room.user_name(mxid) or mxid)
 
     def _event_to_message(self, room, event) -> dict[str, Any] | None:
         """Map a nio timeline event to a Beeper-shaped message dict, or None."""
@@ -215,9 +215,8 @@ class MatrixTransport:
             return base
         for cls, beeper_type, att_type in media_map:
             if isinstance(event, cls):
-                src = getattr(event, "source", {}) or {}
-                content = src.get("content", {}) if isinstance(src, dict) else {}
-                info = content.get("info", {}) if isinstance(content, dict) else {}
+                content = (getattr(event, "source", None) or {}).get("content", {})
+                info = content.get("info", {})
                 # mxc lives at content.url (plaintext) or content.file.url (encrypted)
                 mxc = content.get("url") or (content.get("file", {}) or {}).get("url") or getattr(event, "url", "")
                 body = getattr(event, "body", "") or content.get("body") or "attachment"
@@ -441,8 +440,8 @@ def _pk_from_private(private_key: bytes):
 def restore_key_backup(config: BeeperConfig, recovery_key: str) -> dict[str, int]:
     """Decrypt the server-side megolm backup and import it into the nio store.
 
-    One-shot: run once (the store persists). Returns counts of imported /
-    already-present / failed sessions.
+    One-shot: run once (the store persists). Idempotent. Returns counts of
+    total / imported (decrypted and written) / failed sessions.
     """
     from Crypto.Cipher import AES
     from Crypto.Util import Counter
@@ -490,7 +489,7 @@ def restore_key_backup(config: BeeperConfig, recovery_key: str) -> dict[str, int
     client.restore_login(user_id=user_id, device_id=creds["device_id"], access_token=token)
     client.load_store()
 
-    imported = present = failed = 0
+    imported = failed = 0
     for room_id, room in rooms.items():
         for session_data in room.get("sessions", {}).values():
             try:
@@ -508,10 +507,8 @@ def restore_key_backup(config: BeeperConfig, recovery_key: str) -> dict[str, int
                 )
                 if client.olm.inbound_group_store.add(session):
                     client.olm.save_inbound_group_session(session)
-                    imported += 1
-                else:
-                    present += 1
+                imported += 1
             except Exception:
                 failed += 1
     total = sum(len(r.get("sessions", {})) for r in rooms.values())
-    return {"total": total, "imported": imported, "already_present": present, "failed": failed}
+    return {"total": total, "imported": imported, "failed": failed}
