@@ -95,6 +95,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="File containing the Beeper recovery key (else read env BEEPER_RECOVERY_KEY)",
     )
 
+    create_chat = subparsers.add_parser(
+        "matrix-create-chat",
+        help="Create a Matrix room to use as a purpose-scoped control chat (transport=matrix)",
+    )
+    create_chat.add_argument("name", help="Display name for the new chat, e.g. 'beeper-bot · music'")
+    create_chat.add_argument("--topic", default="", help="Optional room topic")
+    create_chat.add_argument("--no-encrypted", action="store_true", help="Create an unencrypted room (default: encrypted)")
+    create_chat.add_argument("--json", action="store_true", help="Print machine-readable output")
+
     eval_parser = subparsers.add_parser("eval", help="Run a local benchmark suite")
     eval_parser.add_argument("--suite", default=str(DEFAULT_EVAL_SUITE_PATH), help=f"Path to eval suite JSON (default: {DEFAULT_EVAL_SUITE_PATH})")
     eval_parser.add_argument("--json", action="store_true", help="Print machine-readable output")
@@ -415,6 +424,24 @@ def cmd_matrix_restore_keys(config_path: Path, recovery_key_file: str | None, as
     return 0
 
 
+def cmd_matrix_create_chat(config_path: Path, name: str, topic: str, encrypted: bool, as_json: bool) -> int:
+    from .matrix_transport import create_chat
+
+    config = load_config(config_path)
+    result = create_chat(config.beeper, name, topic=topic, encrypted=encrypted)
+    if as_json:
+        print(json.dumps(result, sort_keys=True))
+    else:
+        print(f"Created chat '{result['name']}' -> {result['room_id']} (encrypted={result['encrypted']}).")
+        print("Add it to config under a [control_chats.<name>] section and restart serve:")
+        print("")
+        print("  [control_chats.<name>]")
+        print(f"  chat_id = \"{result['room_id']}\"")
+        print("")
+        print("It should appear as a chat in your Beeper apps shortly.")
+    return 0
+
+
 def cmd_people(config_path: Path, args: argparse.Namespace) -> int:
     config = load_config(config_path)
     sub = args.people_command
@@ -531,6 +558,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_chats(config_path, args.query, args.json)
         if args.command == "matrix-restore-keys":
             return cmd_matrix_restore_keys(config_path, args.recovery_key_file, args.json)
+        if args.command == "matrix-create-chat":
+            return cmd_matrix_create_chat(config_path, args.name, args.topic, not args.no_encrypted, args.json)
     except ConfigError as exc:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2

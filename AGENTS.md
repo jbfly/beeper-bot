@@ -255,7 +255,12 @@ The committed `eval/` suites are synthetic public-safe examples. Keep real local
 `find <q>`, `ask <q>`, `serve [--once]`, `notify <text> [--chat <name>]`,
 `catchup <chat> [--since-sort-key] [--no-cursor-update]`,
 `index-media --kind voice|image [--limit] [--chat]`, `chats [--query]`, `eval`,
-`console`, `people {list,seed,alias,link,delete}`.
+`console`, `people {list,seed,alias,link,delete}`, `matrix-restore-keys`,
+`matrix-create-chat <name> [--topic] [--no-encrypted]`.
+
+`matrix-create-chat` mints a new Matrix room (headless, no Beeper GUI) to use as
+a purpose-scoped control chat — see `docs/purpose-scoped-chats.md`, the
+integration guide other repos read to plug into the bot.
 
 `notify` queues a fire-and-forget message that the running serve loop delivers
 to a control chat (default `main`) — the outbound half of the event bus. Any

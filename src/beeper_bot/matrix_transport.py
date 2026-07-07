@@ -31,6 +31,7 @@ import hashlib
 import hmac
 import json
 import threading
+import urllib.error
 import urllib.request
 from collections import deque
 from datetime import datetime, timezone
@@ -525,3 +526,51 @@ def restore_key_backup(config: BeeperConfig, recovery_key: str) -> dict[str, int
                 failed += 1
     total = sum(len(r.get("sessions", {})) for r in rooms.values())
     return {"total": total, "imported": imported, "failed": failed}
+
+
+def create_chat(config: BeeperConfig, name: str, topic: str = "", encrypted: bool = True) -> dict:
+    """Create a new Matrix room to serve as a purpose-scoped control chat.
+
+    Mints a private room owned by the bot's own account (a "note to self" with a
+    name), so purpose chats can be created headlessly on venus without the Beeper
+    GUI. The room is server-side state: a running serve loop picks it up on its
+    next sync, so this is safe to call while the bot is running (no shared nio
+    store is opened here — it's a raw authenticated createRoom call).
+
+    Returns {"room_id", "name", "encrypted"}. Add the room_id under
+    [control_chats.<name>] in config and restart serve to start polling it.
+    """
+    creds = _load_credentials(config)
+    homeserver = creds["homeserver"].rstrip("/")
+    token = creds["access_token"]
+    body: dict[str, Any] = {
+        "name": name,
+        "preset": "private_chat",
+        "visibility": "private",
+        "is_direct": False,
+    }
+    if topic:
+        body["topic"] = topic
+    if encrypted:
+        body["initial_state"] = [{
+            "type": "m.room.encryption",
+            "state_key": "",
+            "content": {"algorithm": "m.megolm.v1.aes-sha2"},
+        }]
+    req = urllib.request.Request(
+        homeserver + "/_matrix/client/v3/createRoom",
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+    )
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=config.http_timeout_seconds or 60) as resp:
+            result = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise BeeperApiError(f"createRoom failed: HTTP {exc.code} {detail}") from exc
+    room_id = str(result.get("room_id") or "")
+    if not room_id:
+        raise BeeperApiError(f"createRoom returned no room_id: {result}")
+    return {"room_id": room_id, "name": name, "encrypted": encrypted}
