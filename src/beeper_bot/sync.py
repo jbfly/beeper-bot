@@ -185,18 +185,25 @@ def _fetch_sync_pages(config: AppConfig, client: SyncClient, chat_id: str) -> li
 
     cursor = first_page.oldest_cursor
     pages_left = max(0, int(config.beeper.history_backfill_pages) - 1)
+    reached_start = not first_page.has_more
     while cursor and pages_left > 0:
         page = client.fetch_messages_page(chat_id, cursor=cursor, direction="before")
-        if not page.items:
-            break
+        # A page may legitimately yield no stored messages — on Matrix it can be
+        # all reactions/receipts/state or events we lack keys for — while older
+        # messages still sit further back. Keep paginating on the cursor, not on
+        # whether this page had items.
         all_items.extend(page.items)
-        cursor = page.oldest_cursor
         pages_left -= 1
         if not page.has_more:
+            reached_start = True
             break
+        next_cursor = page.oldest_cursor
+        if not next_cursor or next_cursor == cursor:
+            break  # no forward progress; stop rather than loop forever
+        cursor = next_cursor
 
     with open_db(config.archive.path) as conn:
-        if cursor is None or pages_left > 0:
+        if reached_start:
             set_runtime_state(conn, _backfill_done_key(chat_id), "1")
 
     return all_items
