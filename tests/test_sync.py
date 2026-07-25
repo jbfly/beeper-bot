@@ -76,6 +76,28 @@ class SyncTest(unittest.TestCase):
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM sync_state").fetchone()[0], 0)
                 self.assertIsNone(conn.execute("SELECT 1 FROM chats WHERE chat_id = ?", ("chat-unknown",)).fetchone())
 
+    def test_sync_chat_rolls_back_if_approval_is_revoked_mid_sync(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = load_config(self._write_config(tmpdir, ["chat-a"]))
+            approve_chat(config, "chat-a", "Family logistics")
+            client = FakeBeeperClient(
+                chats={"chat-a": {"title": "Family logistics"}},
+                messages={"chat-a": [{"id": "msg-1", "sortKey": "1", "timestamp": "2026-06-01T12:00:00Z", "senderID": "u1", "senderName": "Julie", "type": "TEXT", "text": "secret"}]},
+            )
+            fetch_messages_page = client.fetch_messages_page
+
+            def revoke_then_fetch(*args, **kwargs):
+                revoke_chat(config, "chat-a")
+                return fetch_messages_page(*args, **kwargs)
+
+            client.fetch_messages_page = revoke_then_fetch
+            result = sync_chat(config, client, "chat-a")
+
+            self.assertEqual((result.fetched_messages, result.stored_messages), (1, 0))
+            with open_db(config.archive.path) as conn:
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 0)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM sync_state").fetchone()[0], 0)
+
     def test_sync_chat_inserts_rows_and_fts(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = load_config(self._write_config(tmpdir, ["chat-a"]))

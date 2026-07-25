@@ -286,6 +286,10 @@ def sync_chat(config: AppConfig, client: SyncClient, chat_id: str) -> ChatSyncRe
     stored_messages = 0
     with open_db(config.archive.path) as conn:
         conn.execute("BEGIN")
+        allowed = conn.execute("UPDATE chats SET name = ? WHERE chat_id = ? AND is_allowed = 1", (chat_name, chat_id))
+        if allowed.rowcount != 1:
+            conn.rollback()
+            return ChatSyncResult(chat_id, chat_name, len(ordered), 0, latest_sort_key)
         _upsert_chat(conn, chat_id, chat_name)
         for message in ordered:
             if _upsert_message(conn, chat_id, chat_name, message):
