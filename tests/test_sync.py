@@ -8,6 +8,7 @@ from pathlib import Path
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
 from beeper_bot.db import open_db
+from beeper_bot.retrieval import search_archive
 from beeper_bot.sync import normalize_text, sync_chats
 
 
@@ -98,11 +99,13 @@ class SyncTest(unittest.TestCase):
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM message_fts").fetchone()[0], 2)
                 self.assertEqual(conn.execute("SELECT last_seen_sort_key FROM sync_state WHERE chat_id = ?", ("chat-a",)).fetchone()[0], 2)
                 row = conn.execute(
-                    "SELECT name, last_synced_at FROM chats WHERE chat_id = ?",
+                    "SELECT name, last_synced_at, is_allowed, approval_source, approved_at FROM chats WHERE chat_id = ?",
                     ("chat-a",),
                 ).fetchone()
                 self.assertEqual(row[0], "Family logistics")
                 self.assertIsNotNone(row[1])
+                self.assertEqual(tuple(row[2:]), (0, "", None))
+            self.assertEqual(search_archive(config, "123 Sample St").results, [])
 
     def test_sync_chat_upserts_edited_message_without_duplicates(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

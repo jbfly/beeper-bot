@@ -7,6 +7,7 @@ import sqlite3
 import sys
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Protocol
 
 from .beeper_api import MessagePage
@@ -54,6 +55,32 @@ def normalize_text(text: str | None) -> str | None:
     return normalized
 
 
+
+def normalized_evidence_fingerprint(text: str | None, sender_name: str | None, timestamp: str | None) -> str:
+    normalized_body = (normalize_text(text) or "").casefold()
+    normalized_sender = (normalize_text(sender_name) or "").casefold()
+    timestamp_value = str(timestamp or "").strip()
+    try:
+        normalized_timestamp = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00")).replace(tzinfo=None, microsecond=0).isoformat(timespec="seconds")
+    except ValueError:
+        normalized_timestamp = timestamp_value[:19]
+    if not normalized_body or not normalized_sender or not normalized_timestamp:
+        return ""
+    return hashlib.sha256("\0".join((normalized_body, normalized_sender, normalized_timestamp)).encode()).hexdigest()
+
+
+def find_possible_duplicate(conn: sqlite3.Connection, chat_id: str, message_id: str, source_kind: str, fingerprint: str) -> str | None:
+    if not fingerprint:
+        return None
+    row = conn.execute(
+        """SELECT m.message_id FROM messages m JOIN chats c ON c.chat_id = m.chat_id
+           WHERE m.chat_id = ? AND m.message_id != ? AND m.source_kind != ?
+             AND m.evidence_fingerprint = ? AND c.is_allowed = 1
+           ORDER BY m.sort_key LIMIT 1""",
+        (chat_id, message_id, source_kind, fingerprint),
+    ).fetchone()
+    return str(row["message_id"]) if row else None
+
 def _message_text(message: dict[str, Any]) -> str | None:
     text = message.get("text")
     if text not in (None, ""):
@@ -97,14 +124,15 @@ def _upsert_chat(conn: sqlite3.Connection, chat_id: str, chat_name: str) -> None
     conn.execute(
         """
         INSERT INTO chats(chat_id, name, is_allowed, approval_source, approved_at, created_at, updated_at, last_synced_at)
-        VALUES (?, ?, 1, 'configured-sync', ?, ?, ?, ?)
+        VALUES (?, ?, 0, '', NULL, ?, ?, ?)
         ON CONFLICT(chat_id) DO UPDATE SET
             name = excluded.name,
             updated_at = excluded.updated_at,
             last_synced_at = excluded.last_synced_at
         """,
-        (chat_id, chat_name, now, now, now, now),
+        (chat_id, chat_name, now, now, now),
     )
+    conn.execute("UPDATE message_fts SET chat_name = ? WHERE chat_id = ?", (chat_name, chat_id))
 
 
 def _upsert_message(conn: sqlite3.Connection, chat_id: str, chat_name: str, message: dict[str, Any]) -> bool:
@@ -113,13 +141,20 @@ def _upsert_message(conn: sqlite3.Connection, chat_id: str, chat_name: str, mess
         return False
     message_id = _message_id(chat_id, message, sort_key)
     text = _message_text(message)
+    timestamp = str(message.get("timestamp", ""))
+    sender_name = str(message.get("senderName", "") or "")
+    raw_json = json.dumps(message, sort_keys=True)
+    artifact_sha256 = hashlib.sha256(raw_json.encode()).hexdigest()
+    fingerprint = normalized_evidence_fingerprint(text, sender_name, timestamp)
+    possible_duplicate = find_possible_duplicate(conn, chat_id, message_id, "beeper", fingerprint)
     now = utc_now()
     conn.execute(
         """
         INSERT INTO messages(
             message_id, chat_id, sort_key, timestamp, sender_id, sender_name,
-            is_sender, message_type, text, normalized_text, raw_json, source_kind, source_ref, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'beeper', ?, ?, ?)
+            is_sender, message_type, text, normalized_text, raw_json, source_kind, source_ref,
+            source_artifact_sha256, evidence_fingerprint, possible_duplicate_of, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'beeper', ?, ?, ?, ?, ?, ?)
         ON CONFLICT(message_id) DO UPDATE SET
             chat_id = excluded.chat_id,
             sort_key = excluded.sort_key,
@@ -131,21 +166,27 @@ def _upsert_message(conn: sqlite3.Connection, chat_id: str, chat_name: str, mess
             text = excluded.text,
             normalized_text = excluded.normalized_text,
             raw_json = excluded.raw_json,
+            source_artifact_sha256 = excluded.source_artifact_sha256,
+            evidence_fingerprint = excluded.evidence_fingerprint,
+            possible_duplicate_of = COALESCE(excluded.possible_duplicate_of, messages.possible_duplicate_of),
             updated_at = excluded.updated_at
         """,
         (
             message_id,
             chat_id,
             sort_key,
-            str(message.get("timestamp", "")),
+            timestamp,
             str(message.get("senderID", "") or ""),
-            str(message.get("senderName", "") or ""),
+            sender_name,
             1 if message.get("isSender") else 0,
             str(message.get("type", "UNKNOWN")),
             text,
             normalize_text(text),
-            json.dumps(message, sort_keys=True),
+            raw_json,
             message_id,
+            artifact_sha256,
+            fingerprint,
+            possible_duplicate,
             now,
             now,
         ),
@@ -157,7 +198,7 @@ def _upsert_message(conn: sqlite3.Connection, chat_id: str, chat_name: str, mess
             INSERT INTO message_fts(message_id, chat_id, chat_name, sender_name, text)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (message_id, chat_id, chat_name, str(message.get("senderName", "") or ""), text),
+            (message_id, chat_id, chat_name, sender_name, text),
         )
     # Media messages carry transcript/description text derived after ingest;
     # the upsert above just overwrote it with the raw payload text, so put it

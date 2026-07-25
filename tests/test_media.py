@@ -8,6 +8,7 @@ from pathlib import Path
 import beeper_bot.media as media_mod
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
+from beeper_bot.offline_archive import approve_chat
 from beeper_bot.db import open_db
 from beeper_bot.llm import ask_archive
 from beeper_bot.media import (
@@ -114,6 +115,8 @@ class MediaTestBase(unittest.TestCase):
                 ]
             },
         )
+        for chat_id in client.chats:
+            approve_chat(config, chat_id, chat_id)
         sync_chats(config, client)
         return config, client, tmpdir
 
@@ -166,6 +169,8 @@ class MediaTest(MediaTestBase):
         self.addCleanup(tmpdir.cleanup)
         run_derivation_pass(config, "voice-memo", limit=10, llm_client=FakeMediaClient())
 
+        for chat_id in client.chats:
+            approve_chat(config, chat_id, chat_id)
         sync_chats(config, client)
 
         with open_db(config.archive.path) as conn:

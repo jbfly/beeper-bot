@@ -318,6 +318,10 @@ def derive_message_media(
     kind: str,
     llm_client: MediaLlmClient | None = None,
 ) -> DerivedResult:
+    with open_db(config.archive.path) as conn:
+        approved = conn.execute("SELECT 1 FROM chats WHERE chat_id = ? AND is_allowed = 1", (chat_id,)).fetchone()
+    if approved is None:
+        raise MediaError("chat is not approved")
     client = llm_client or OpenAiCompatMediaClient()
     attachment = _primary_attachment(raw_json, kind)
     if attachment is None:
@@ -499,8 +503,8 @@ def pending_media_messages(config: AppConfig, kind: str, limit: int, chat_query:
         rows = conn.execute(
             f"""
             SELECT m.message_id, m.chat_id, m.raw_json
-            FROM messages m
-            WHERE m.message_type IN ({placeholders})
+            FROM messages m JOIN chats c ON c.chat_id = m.chat_id
+            WHERE c.is_allowed = 1 AND m.message_type IN ({placeholders})
               {chat_filter}
               AND NOT EXISTS (
                   SELECT 1 FROM attachment_derived_text d

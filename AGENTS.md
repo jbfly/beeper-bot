@@ -70,7 +70,7 @@ n_tokens`). The 12B profile uses `UBATCH_SIZE=512`, `IMAGE_MAX_TOKENS=280`.
 | module | responsibility |
 |---|---|
 | `config.py` | load TOML config into dataclasses (§6) |
-| `db.py` | SQLite schema + migrations; **schema v8** |
+| `db.py` | SQLite schema + migrations; **schema v9** |
 | `beeper_api.py` | Beeper Desktop HTTP client: chats, messages, `send_message`, asset download |
 | `offline_archive.py` | stable chat approvals, bounded WhatsApp ZIP/TXT import, scoped cited reads |
 | `sync.py` | map API payloads → DB rows; mirrored FTS5; deep backfill; re-applies derived media text after upserts |
@@ -91,12 +91,12 @@ n_tokens`). The 12B profile uses `UBATCH_SIZE=512`, `IMAGE_MAX_TOKENS=280`.
 
 ---
 
-## 4. Data model (SQLite, schema v8)
+## 4. Data model (SQLite, schema v9)
 
 `db.py` owns the schema and forward-only migrations (`PRAGMA user_version`,
 `migrate_vN_to_vN+1`, applied in `init_db_path`). Tables:
 
-- `chats`, `messages` — the archive. Chats default denied and carry stable-ID approval/revocation metadata; messages carry source kind/reference citations. `messages.text` holds the searchable
+- `chats`, `messages` — the archive. Chats default denied and carry stable-ID approval/revocation metadata; sync scope never grants approval. Messages carry source kind/reference, artifact SHA-256, evidence fingerprint, and optional `possible_duplicate_of`. Duplicate candidates require the same approved chat, normalized text, normalized sender display, and second-precision timestamp; records are never merged, and missing/unreliable shared sender names produce no automatic link. `messages.text` holds the searchable
   text; for media messages it is replaced by the derived transcript/description.
 - `message_fts` — FTS5 mirror, **`tokenize = 'porter unicode61'`** (v5; stems
   owe/owes/owed). Rebuilt from `messages` on migration.
@@ -118,7 +118,7 @@ Per-control-chat cursors live in `runtime_state` under
 
 History: v2 people graph · v3 control memory · v4 tracing/telemetry ·
 v5 porter FTS · v6 attachment derived text · v7 outbound notify queue ·
-v8 default-deny chat approvals and message source citations.
+v8 default-deny chat approvals and message source citations · v9 source artifact hashes, evidence fingerprints, and conservative cross-source duplicate-candidate links.
 
 ---
 

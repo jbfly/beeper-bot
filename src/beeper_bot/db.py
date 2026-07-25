@@ -11,7 +11,7 @@ from typing import Iterator
 from .config import AppConfig, ensure_private_dir, ensure_private_file
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 @dataclass(slots=True)
@@ -94,6 +94,9 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             raw_json TEXT NOT NULL,
             source_kind TEXT NOT NULL DEFAULT 'beeper',
             source_ref TEXT NOT NULL DEFAULT '',
+            source_artifact_sha256 TEXT NOT NULL DEFAULT '',
+            evidence_fingerprint TEXT NOT NULL DEFAULT '',
+            possible_duplicate_of TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(chat_id) REFERENCES chats(chat_id)
@@ -105,6 +108,8 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             ON messages(chat_id, timestamp);
         CREATE INDEX IF NOT EXISTS idx_messages_chat_sender_name
             ON messages(chat_id, sender_name);
+        CREATE INDEX IF NOT EXISTS idx_messages_chat_evidence_fingerprint
+            ON messages(chat_id, evidence_fingerprint);
 
         CREATE TABLE IF NOT EXISTS sync_state (
             chat_id TEXT PRIMARY KEY,
@@ -483,6 +488,25 @@ def migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version >= 9:
+        return
+    conn.executescript(
+        """
+        BEGIN;
+        ALTER TABLE messages ADD COLUMN source_artifact_sha256 TEXT NOT NULL DEFAULT '';
+        ALTER TABLE messages ADD COLUMN evidence_fingerprint TEXT NOT NULL DEFAULT '';
+        ALTER TABLE messages ADD COLUMN possible_duplicate_of TEXT;
+        CREATE INDEX IF NOT EXISTS idx_messages_chat_evidence_fingerprint
+            ON messages(chat_id, evidence_fingerprint);
+        COMMIT;
+        """
+    )
+    conn.execute("PRAGMA user_version = 9")
+    conn.commit()
+
+
 def init_db_path(db_path: Path) -> None:
     ensure_private_dir(db_path.parent)
     ensure_private_file(db_path)
@@ -505,6 +529,8 @@ def init_db_path(db_path: Path) -> None:
             migrate_v6_to_v7(conn)
         if version <= 7:
             migrate_v7_to_v8(conn)
+        if version <= 8:
+            migrate_v8_to_v9(conn)
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:

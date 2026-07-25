@@ -7,6 +7,7 @@ from pathlib import Path
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.bridge import ControlBridge
 from beeper_bot.config import load_config
+from beeper_bot.offline_archive import approve_chat
 from beeper_bot.llm import LlmError
 
 
@@ -97,6 +98,7 @@ class BridgeTest(unittest.TestCase):
                     ],
                 },
             )
+            approve_chat(config, "indexed-chat", "Morgan Wright")
             bridge = ControlBridge(config, api_client=client)
 
             first = bridge.process_once()

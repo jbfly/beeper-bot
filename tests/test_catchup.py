@@ -14,6 +14,7 @@ from beeper_bot.catchup import (
     resolve_chats,
 )
 from beeper_bot.config import load_config
+from beeper_bot.offline_archive import approve_chat
 from beeper_bot.discovery import (
     add_dynamic_indexed_chat_ids,
     dynamic_indexed_chat_ids,
@@ -88,6 +89,8 @@ class CatchupTest(unittest.TestCase):
                 ]
             },
         )
+        for chat_id in client.chats:
+            approve_chat(config, chat_id, chat_id)
         sync_chats(config, client)
         return config, tmpdir
 
@@ -167,6 +170,8 @@ class MultiChatCatchupTest(unittest.TestCase):
                 "chat-rangutans": [_message(3, "Pete", "Camp build starts June 20.")],
             },
         )
+        for chat_id in client.chats:
+            approve_chat(config, chat_id, chat_id)
         sync_chats(config, client)
         return config, tmpdir
 

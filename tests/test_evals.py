@@ -7,6 +7,7 @@ from pathlib import Path
 
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
+from beeper_bot.offline_archive import approve_chat
 from beeper_bot.evals import (
     EvalCase,
     configure_eval_run,
@@ -110,6 +111,8 @@ class EvalTest(unittest.TestCase):
                 ]
             },
         )
+        for chat_id in client.chats:
+            approve_chat(config, chat_id, chat_id)
         sync_chats(config, client)
         return config, tmpdir
 

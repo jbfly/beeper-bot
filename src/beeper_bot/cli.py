@@ -98,6 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
     wa_import.add_argument("path", type=Path)
     wa_import.add_argument("--chat-id", required=True, help="Stable authorization identity for this chat")
     wa_import.add_argument("--name", default=None, help="Display name only")
+    wa_import.add_argument("--date-order", choices=["auto", "day-first", "month-first"], default="auto",
+                           help="WhatsApp numeric date order; auto refuses fully ambiguous exports")
     wa_import.add_argument("--json", action="store_true", help="Print machine-readable output")
 
     archive_search = subparsers.add_parser("archive-search", help="Search one approved chat")
@@ -594,7 +596,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
             return 0
         if args.command == "import-whatsapp":
-            payload = import_whatsapp(load_config(config_path), args.path, args.chat_id, args.name)
+            payload = import_whatsapp(load_config(config_path), args.path, args.chat_id, args.name, args.date_order)
             print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
             return 0
         if args.command == "archive-search":
