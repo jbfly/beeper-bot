@@ -70,8 +70,9 @@ n_tokens`). The 12B profile uses `UBATCH_SIZE=512`, `IMAGE_MAX_TOKENS=280`.
 | module | responsibility |
 |---|---|
 | `config.py` | load TOML config into dataclasses (§6) |
-| `db.py` | SQLite schema + migrations; **schema v6** |
+| `db.py` | SQLite schema + migrations; **schema v8** |
 | `beeper_api.py` | Beeper Desktop HTTP client: chats, messages, `send_message`, asset download |
+| `offline_archive.py` | stable chat approvals, bounded WhatsApp ZIP/TXT import, scoped cited reads |
 | `sync.py` | map API payloads → DB rows; mirrored FTS5; deep backfill; re-applies derived media text after upserts |
 | `discovery.py` | chat tiering: recent auto-index, dynamic allowlist, on-demand question→chat matching |
 | `retrieval.py` | FTS5 (porter) search, additive scoring, span/context expansion, slice windows |
@@ -90,12 +91,12 @@ n_tokens`). The 12B profile uses `UBATCH_SIZE=512`, `IMAGE_MAX_TOKENS=280`.
 
 ---
 
-## 4. Data model (SQLite, schema v7)
+## 4. Data model (SQLite, schema v8)
 
 `db.py` owns the schema and forward-only migrations (`PRAGMA user_version`,
 `migrate_vN_to_vN+1`, applied in `init_db_path`). Tables:
 
-- `chats`, `messages` — the archive. `messages.text` holds the searchable
+- `chats`, `messages` — the archive. Chats default denied and carry stable-ID approval/revocation metadata; messages carry source kind/reference citations. `messages.text` holds the searchable
   text; for media messages it is replaced by the derived transcript/description.
 - `message_fts` — FTS5 mirror, **`tokenize = 'porter unicode61'`** (v5; stems
   owe/owes/owed). Rebuilt from `messages` on migration.
@@ -116,7 +117,8 @@ Per-control-chat cursors live in `runtime_state` under
 `control_chat_last_seen_sort_key:<chat_id>` (one row per purpose-scoped chat).
 
 History: v2 people graph · v3 control memory · v4 tracing/telemetry ·
-v5 porter FTS · v6 attachment derived text · v7 outbound notify queue.
+v5 porter FTS · v6 attachment derived text · v7 outbound notify queue ·
+v8 default-deny chat approvals and message source citations.
 
 ---
 
@@ -255,7 +257,8 @@ The committed `eval/` suites are synthetic public-safe examples. Keep real local
 **CLI** (`beeper-bot --config <path> <cmd>`): `init-db`, `status`, `sync`,
 `find <q>`, `ask <q>`, `serve [--once]`, `notify <text> [--chat <name>]`,
 `catchup <chat> [--since-sort-key] [--no-cursor-update]`,
-`index-media --kind voice|image [--limit] [--chat]`, `chats [--query]`, `eval`,
+`index-media --kind voice|image [--limit] [--chat]`, `chat-access {list,approve,revoke}`,
+`import-whatsapp`, `archive-search`, `archive-thread`, `chats [--query]`, `eval`,
 `console`, `people {list,seed,alias,link,delete}`, `matrix-restore-keys`,
 `matrix-create-chat <name> [--topic] [--no-encrypted]`.
 

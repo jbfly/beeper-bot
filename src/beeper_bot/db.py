@@ -11,7 +11,7 @@ from typing import Iterator
 from .config import AppConfig, ensure_private_dir, ensure_private_file
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 @dataclass(slots=True)
@@ -71,7 +71,10 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS chats (
             chat_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            is_allowed INTEGER NOT NULL DEFAULT 1,
+            is_allowed INTEGER NOT NULL DEFAULT 0,
+            approval_source TEXT NOT NULL DEFAULT '',
+            approved_at TEXT,
+            revoked_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             last_synced_at TEXT
@@ -89,6 +92,8 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             text TEXT,
             normalized_text TEXT,
             raw_json TEXT NOT NULL,
+            source_kind TEXT NOT NULL DEFAULT 'beeper',
+            source_ref TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(chat_id) REFERENCES chats(chat_id)
@@ -441,6 +446,43 @@ def migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version >= 8:
+        return
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript(
+        """
+        BEGIN;
+        CREATE TABLE chats_v8 (
+            chat_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            is_allowed INTEGER NOT NULL DEFAULT 0,
+            approval_source TEXT NOT NULL DEFAULT '',
+            approved_at TEXT,
+            revoked_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_synced_at TEXT
+        );
+        INSERT INTO chats_v8(chat_id, name, is_allowed, approval_source, approved_at, created_at, updated_at, last_synced_at)
+        SELECT chat_id, name, is_allowed,
+               CASE WHEN is_allowed = 1 THEN 'legacy-migration' ELSE '' END,
+               CASE WHEN is_allowed = 1 THEN updated_at ELSE NULL END,
+               created_at, updated_at, last_synced_at
+        FROM chats;
+        DROP TABLE chats;
+        ALTER TABLE chats_v8 RENAME TO chats;
+        ALTER TABLE messages ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'beeper';
+        ALTER TABLE messages ADD COLUMN source_ref TEXT NOT NULL DEFAULT '';
+        COMMIT;
+        """
+    )
+    conn.execute("PRAGMA user_version = 8")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.commit()
+
+
 def init_db_path(db_path: Path) -> None:
     ensure_private_dir(db_path.parent)
     ensure_private_file(db_path)
@@ -461,6 +503,8 @@ def init_db_path(db_path: Path) -> None:
             migrate_v5_to_v6(conn)
         if version <= 6:
             migrate_v6_to_v7(conn)
+        if version <= 7:
+            migrate_v7_to_v8(conn)
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:

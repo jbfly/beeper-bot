@@ -96,15 +96,14 @@ def _upsert_chat(conn: sqlite3.Connection, chat_id: str, chat_name: str) -> None
     now = utc_now()
     conn.execute(
         """
-        INSERT INTO chats(chat_id, name, is_allowed, created_at, updated_at, last_synced_at)
-        VALUES (?, ?, 1, ?, ?, ?)
+        INSERT INTO chats(chat_id, name, is_allowed, approval_source, approved_at, created_at, updated_at, last_synced_at)
+        VALUES (?, ?, 1, 'configured-sync', ?, ?, ?, ?)
         ON CONFLICT(chat_id) DO UPDATE SET
             name = excluded.name,
-            is_allowed = 1,
             updated_at = excluded.updated_at,
             last_synced_at = excluded.last_synced_at
         """,
-        (chat_id, chat_name, now, now, now),
+        (chat_id, chat_name, now, now, now, now),
     )
 
 
@@ -119,8 +118,8 @@ def _upsert_message(conn: sqlite3.Connection, chat_id: str, chat_name: str, mess
         """
         INSERT INTO messages(
             message_id, chat_id, sort_key, timestamp, sender_id, sender_name,
-            is_sender, message_type, text, normalized_text, raw_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_sender, message_type, text, normalized_text, raw_json, source_kind, source_ref, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'beeper', ?, ?, ?)
         ON CONFLICT(message_id) DO UPDATE SET
             chat_id = excluded.chat_id,
             sort_key = excluded.sort_key,
@@ -146,6 +145,7 @@ def _upsert_message(conn: sqlite3.Connection, chat_id: str, chat_name: str, mess
             text,
             normalize_text(text),
             json.dumps(message, sort_keys=True),
+            message_id,
             now,
             now,
         ),

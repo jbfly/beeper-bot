@@ -19,6 +19,7 @@ from .evals import (
     suite_result_to_dict,
 )
 from .llm import LlmError, ask_archive, format_ask_response
+from .offline_archive import approve_chat, import_whatsapp, list_approved_chats, revoke_chat, scoped_search, surrounding_thread
 from .people import (load_person_graph, seed_person, add_person_alias, add_person_chat,
                     delete_person, delete_person as remove_person)
 from .retrieval import format_find_response, search_archive
@@ -80,6 +81,36 @@ def build_parser() -> argparse.ArgumentParser:
     console.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     console.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
     console.add_argument("--sample-seconds", type=int, default=2, help="Telemetry sample interval in seconds")
+
+    access = subparsers.add_parser("chat-access", help="Manage stable chat approval metadata")
+    access_sub = access.add_subparsers(dest="access_command", required=True)
+    access_list = access_sub.add_parser("list", help="List approved chats")
+    access_list.add_argument("--json", action="store_true", help="Print machine-readable output")
+    access_approve = access_sub.add_parser("approve", help="Approve one stable chat ID")
+    access_approve.add_argument("chat_id")
+    access_approve.add_argument("--name", default="", help="Display name only; never used for authorization")
+    access_approve.add_argument("--json", action="store_true", help="Print machine-readable output")
+    access_revoke = access_sub.add_parser("revoke", help="Revoke one stable chat ID immediately")
+    access_revoke.add_argument("chat_id")
+    access_revoke.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    wa_import = subparsers.add_parser("import-whatsapp", help="Import an approved WhatsApp ZIP or TXT export")
+    wa_import.add_argument("path", type=Path)
+    wa_import.add_argument("--chat-id", required=True, help="Stable authorization identity for this chat")
+    wa_import.add_argument("--name", default=None, help="Display name only")
+    wa_import.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    archive_search = subparsers.add_parser("archive-search", help="Search one approved chat")
+    archive_search.add_argument("chat_id")
+    archive_search.add_argument("query", nargs="+")
+    archive_search.add_argument("--limit", type=int, default=20)
+    archive_search.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    archive_thread = subparsers.add_parser("archive-thread", help="Read surrounding messages in one approved chat")
+    archive_thread.add_argument("chat_id")
+    archive_thread.add_argument("message_id")
+    archive_thread.add_argument("--radius", type=int, default=3)
+    archive_thread.add_argument("--json", action="store_true", help="Print machine-readable output")
 
     chats = subparsers.add_parser("chats", help="List available Beeper chats")
     chats.add_argument("--json", action="store_true", help="Print machine-readable output")
@@ -552,6 +583,30 @@ def main(argv: list[str] | None = None) -> int:
                 args.temperature,
                 args.planner_temperature,
             )
+        if args.command == "chat-access":
+            config = load_config(config_path)
+            if args.access_command == "list":
+                payload = {"chats": list_approved_chats(config)}
+            elif args.access_command == "approve":
+                payload = approve_chat(config, args.chat_id, args.name or args.chat_id)
+            else:
+                payload = {"chat_id": args.chat_id, "revoked": revoke_chat(config, args.chat_id)}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+            return 0
+        if args.command == "import-whatsapp":
+            payload = import_whatsapp(load_config(config_path), args.path, args.chat_id, args.name)
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+            return 0
+        if args.command == "archive-search":
+            results = scoped_search(load_config(config_path), args.chat_id, " ".join(args.query), args.limit)
+            payload = {"chat_id": args.chat_id, "query": " ".join(args.query), "results": results}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+            return 0
+        if args.command == "archive-thread":
+            messages = surrounding_thread(load_config(config_path), args.chat_id, args.message_id, args.radius)
+            payload = {"chat_id": args.chat_id, "anchor_message_id": args.message_id, "messages": messages}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+            return 0
         if args.command == "people":
             return cmd_people(config_path, args)
         if args.command == "chats":

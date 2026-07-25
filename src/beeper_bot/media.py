@@ -419,7 +419,7 @@ def find_voice_transcripts(
             FROM attachment_derived_text d
             JOIN messages m ON m.message_id = d.message_id
             LEFT JOIN chats c ON c.chat_id = m.chat_id
-            WHERE {' AND '.join(clauses)}
+            WHERE c.is_allowed = 1 AND {' AND '.join(clauses)}
             ORDER BY m.sort_key DESC
             LIMIT ?
             """,

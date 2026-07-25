@@ -63,6 +63,7 @@ def _chat_rows(config: AppConfig):
             SELECT c.chat_id, c.name, MAX(m.sort_key) AS latest
             FROM chats c
             LEFT JOIN messages m ON m.chat_id = c.chat_id
+            WHERE c.is_allowed = 1
             GROUP BY c.chat_id, c.name
             """
         ).fetchall()
@@ -186,10 +187,10 @@ def _messages_since(config: AppConfig, chat_id: str, since_sort_key: int | None)
         if since_sort_key is None:
             rows = conn.execute(
                 """
-                SELECT sender_name, timestamp, text, sort_key
-                FROM messages
-                WHERE chat_id = ? AND text IS NOT NULL AND text != ''
-                ORDER BY sort_key DESC
+                SELECT m.sender_name, m.timestamp, m.text, m.sort_key
+                FROM messages m JOIN chats c ON c.chat_id = m.chat_id
+                WHERE m.chat_id = ? AND c.is_allowed = 1 AND m.text IS NOT NULL AND m.text != ''
+                ORDER BY m.sort_key DESC
                 LIMIT ?
                 """,
                 (chat_id, MAX_CATCHUP_MESSAGES + 1),
@@ -197,10 +198,10 @@ def _messages_since(config: AppConfig, chat_id: str, since_sort_key: int | None)
         else:
             rows = conn.execute(
                 """
-                SELECT sender_name, timestamp, text, sort_key
-                FROM messages
-                WHERE chat_id = ? AND sort_key > ? AND text IS NOT NULL AND text != ''
-                ORDER BY sort_key DESC
+                SELECT m.sender_name, m.timestamp, m.text, m.sort_key
+                FROM messages m JOIN chats c ON c.chat_id = m.chat_id
+                WHERE m.chat_id = ? AND c.is_allowed = 1 AND m.sort_key > ? AND m.text IS NOT NULL AND m.text != ''
+                ORDER BY m.sort_key DESC
                 LIMIT ?
                 """,
                 (chat_id, since_sort_key, MAX_CATCHUP_MESSAGES + 1),

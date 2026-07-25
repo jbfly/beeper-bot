@@ -193,6 +193,7 @@ def _candidate_rows(
                 JOIN messages AS m ON m.message_id = message_fts.message_id
                 JOIN chats AS c ON c.chat_id = m.chat_id
                 WHERE message_fts MATCH ?
+                  AND c.is_allowed = 1
                   AND (? IS NULL OR m.timestamp >= ?)
                   AND (? IS NULL OR m.timestamp <= ?){extra_filters}
                 ORDER BY bm25(message_fts), m.sort_key DESC
@@ -223,6 +224,7 @@ def _candidate_rows(
             WHERE (COALESCE(m.normalized_text, '') LIKE ?
                OR COALESCE(m.sender_name, '') LIKE ?
                OR c.name LIKE ?)
+              AND c.is_allowed = 1
               AND (? IS NULL OR m.timestamp >= ?)
               AND (? IS NULL OR m.timestamp <= ?){extra_filters}
             ORDER BY m.sort_key DESC
@@ -345,9 +347,9 @@ def collect_search_catalog(config: AppConfig, sender_limit: int = 100, chat_limi
             for row in conn.execute(
                 """
                 SELECT sender_name
-                FROM messages
-                WHERE COALESCE(sender_name, '') != ''
-                GROUP BY sender_name
+                FROM messages m JOIN chats c ON c.chat_id = m.chat_id
+                WHERE COALESCE(m.sender_name, '') != '' AND c.is_allowed = 1
+                GROUP BY m.sender_name
                 ORDER BY COUNT(*) DESC, sender_name ASC
                 LIMIT ?
                 """,
@@ -360,7 +362,7 @@ def collect_search_catalog(config: AppConfig, sender_limit: int = 100, chat_limi
                 """
                 SELECT name
                 FROM chats
-                WHERE COALESCE(name, '') != ''
+                WHERE COALESCE(name, '') != '' AND is_allowed = 1
                 ORDER BY name ASC
                 LIMIT ?
                 """,
@@ -427,7 +429,7 @@ def expand_results_with_context(config: AppConfig, results: list[SearchResult], 
     with open_db(config.archive.path) as conn:
         for result in results:
             anchor = conn.execute(
-                "SELECT sort_key FROM messages WHERE message_id = ?",
+                "SELECT m.sort_key FROM messages m JOIN chats c ON c.chat_id = m.chat_id WHERE m.message_id = ? AND c.is_allowed = 1",
                 (result.message_id,),
             ).fetchone()
             if anchor is None:
@@ -438,7 +440,7 @@ def expand_results_with_context(config: AppConfig, results: list[SearchResult], 
                 """
                 SELECT COALESCE(sender_name, '') AS sender_name, timestamp, COALESCE(text, '') AS text
                 FROM messages
-                WHERE chat_id = ? AND sort_key < ?
+                WHERE chat_id = ? AND sort_key < ? AND EXISTS (SELECT 1 FROM chats c WHERE c.chat_id = messages.chat_id AND c.is_allowed = 1)
                 ORDER BY sort_key DESC
                 LIMIT ?
                 """,
@@ -448,7 +450,7 @@ def expand_results_with_context(config: AppConfig, results: list[SearchResult], 
                 """
                 SELECT COALESCE(sender_name, '') AS sender_name, timestamp, COALESCE(text, '') AS text
                 FROM messages
-                WHERE chat_id = ? AND sort_key > ?
+                WHERE chat_id = ? AND sort_key > ? AND EXISTS (SELECT 1 FROM chats c WHERE c.chat_id = messages.chat_id AND c.is_allowed = 1)
                 ORDER BY sort_key ASC
                 LIMIT ?
                 """,
@@ -497,7 +499,7 @@ def expand_results_with_spans(
     with open_db(config.archive.path) as conn:
         for seed in results[:seed_limit]:
             anchor = conn.execute(
-                "SELECT sort_key FROM messages WHERE message_id = ?",
+                "SELECT m.sort_key FROM messages m JOIN chats c ON c.chat_id = m.chat_id WHERE m.message_id = ? AND c.is_allowed = 1",
                 (seed.message_id,),
             ).fetchone()
             if anchor is None:
@@ -516,7 +518,7 @@ def expand_results_with_spans(
                     COALESCE(m.text, '') AS text
                 FROM messages AS m
                 JOIN chats AS c ON c.chat_id = m.chat_id
-                WHERE m.chat_id = ?
+                WHERE m.chat_id = ? AND c.is_allowed = 1
                   AND m.sort_key BETWEEN ? AND ?
                 ORDER BY m.sort_key ASC
                 """,
@@ -582,7 +584,7 @@ def pack_chat_windows(
             sort_key = seed.sort_key
             if sort_key <= 0:
                 row = conn.execute(
-                    "SELECT sort_key FROM messages WHERE message_id = ?",
+                    "SELECT m.sort_key FROM messages m JOIN chats c ON c.chat_id = m.chat_id WHERE m.message_id = ? AND c.is_allowed = 1",
                     (seed.message_id,),
                 ).fetchone()
                 if row is None:
@@ -640,7 +642,7 @@ def pack_chat_windows(
                     COALESCE(m.text, '') AS text
                 FROM messages AS m
                 JOIN chats AS c ON c.chat_id = m.chat_id
-                WHERE m.chat_id = ?
+                WHERE m.chat_id = ? AND c.is_allowed = 1
                   AND m.sort_key BETWEEN ? AND ?
                 ORDER BY m.sort_key ASC
                 """,
