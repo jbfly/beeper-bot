@@ -267,6 +267,11 @@ def _update_sync_state(conn: sqlite3.Connection, chat_id: str, latest_sort_key: 
 
 def sync_chat(config: AppConfig, client: SyncClient, chat_id: str) -> ChatSyncResult:
     init_db_path(config.archive.path)
+    with open_db(config.archive.path) as conn:
+        chat = conn.execute("SELECT name, is_allowed FROM chats WHERE chat_id = ?", (chat_id,)).fetchone()
+    if chat is None or int(chat["is_allowed"]) != 1:
+        return ChatSyncResult(chat_id, str(chat["name"]) if chat else chat_id, 0, 0, None)
+
     chat_payload = client.fetch_chat(chat_id)
     chat_name = _chat_name(chat_payload, chat_id)
     messages = _fetch_sync_pages(config, client, chat_id)

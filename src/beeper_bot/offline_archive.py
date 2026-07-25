@@ -70,6 +70,15 @@ def revoke_chat(config: AppConfig, chat_id: str) -> bool:
         return cursor.rowcount > 0
 
 
+def list_chats(config: AppConfig) -> list[dict[str, object]]:
+    init_db_path(config.archive.path)
+    with open_db(config.archive.path) as conn:
+        rows = conn.execute(
+            "SELECT chat_id, name, is_allowed FROM chats ORDER BY name, chat_id"
+        ).fetchall()
+    return [{"chat_id": row["chat_id"], "name": row["name"], "allowed": bool(row["is_allowed"])} for row in rows]
+
+
 def list_approved_chats(config: AppConfig) -> list[dict[str, object]]:
     init_db_path(config.archive.path)
     with open_db(config.archive.path) as conn:

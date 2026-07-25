@@ -8,8 +8,9 @@ from pathlib import Path
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.config import load_config
 from beeper_bot.db import open_db
+from beeper_bot.offline_archive import approve_chat, revoke_chat
 from beeper_bot.retrieval import search_archive
-from beeper_bot.sync import normalize_text, sync_chats
+from beeper_bot.sync import normalize_text, sync_chat, sync_chats
 
 
 class FakeBeeperClient:
@@ -58,9 +59,27 @@ class SyncTest(unittest.TestCase):
     def test_normalize_text(self) -> None:
         self.assertEqual(normalize_text("  hi\r\nthere\t\tfriend  "), "hi\nthere friend")
 
+    def test_sync_chat_skips_unapproved_and_unknown_chats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = load_config(self._write_config(tmpdir, []))
+            approve_chat(config, "chat-denied", "Denied chat")
+            revoke_chat(config, "chat-denied")
+            client = FakeBeeperClient(chats={}, messages={})
+
+            denied = sync_chat(config, client, "chat-denied")
+            unknown = sync_chat(config, client, "chat-unknown")
+
+            self.assertEqual((denied.fetched_messages, denied.stored_messages), (0, 0))
+            self.assertEqual((unknown.fetched_messages, unknown.stored_messages), (0, 0))
+            with open_db(config.archive.path) as conn:
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 0)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM sync_state").fetchone()[0], 0)
+                self.assertIsNone(conn.execute("SELECT 1 FROM chats WHERE chat_id = ?", ("chat-unknown",)).fetchone())
+
     def test_sync_chat_inserts_rows_and_fts(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = load_config(self._write_config(tmpdir, ["chat-a"]))
+            approve_chat(config, "chat-a", "Family logistics")
             client = FakeBeeperClient(
                 chats={"chat-a": {"title": "Family logistics"}},
                 messages={
@@ -104,12 +123,14 @@ class SyncTest(unittest.TestCase):
                 ).fetchone()
                 self.assertEqual(row[0], "Family logistics")
                 self.assertIsNotNone(row[1])
-                self.assertEqual(tuple(row[2:]), (0, "", None))
-            self.assertEqual(search_archive(config, "123 Sample St").results, [])
+                self.assertEqual(tuple(row[2:4]), (1, "operator"))
+                self.assertIsNotNone(row[4])
+            self.assertEqual(len(search_archive(config, "123 Sample St").results), 1)
 
     def test_sync_chat_upserts_edited_message_without_duplicates(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = load_config(self._write_config(tmpdir, ["chat-a"]))
+            approve_chat(config, "chat-a", "Family logistics")
             client = FakeBeeperClient(
                 chats={"chat-a": {"title": "Family logistics"}},
                 messages={
@@ -152,6 +173,7 @@ class SyncTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = self._write_config(tmpdir, ["chat-a"])
             config = load_config(config_path)
+            approve_chat(config, "chat-a", "Family logistics")
             config.beeper.history_backfill_pages = 3
             client = FakeBeeperClient(
                 chats={"chat-a": {"title": "Family logistics"}},

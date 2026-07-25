@@ -19,7 +19,7 @@ from .evals import (
     suite_result_to_dict,
 )
 from .llm import LlmError, ask_archive, format_ask_response
-from .offline_archive import approve_chat, import_whatsapp, list_approved_chats, revoke_chat, scoped_search, surrounding_thread
+from .offline_archive import approve_chat, import_whatsapp, list_approved_chats, list_chats, revoke_chat, scoped_search, surrounding_thread
 from .people import (load_person_graph, seed_person, add_person_alias, add_person_chat,
                     delete_person, delete_person as remove_person)
 from .retrieval import format_find_response, search_archive
@@ -113,6 +113,9 @@ def build_parser() -> argparse.ArgumentParser:
     archive_thread.add_argument("message_id")
     archive_thread.add_argument("--radius", type=int, default=3)
     archive_thread.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    list_chats_parser = subparsers.add_parser("list-chats", help="Show which local chats are shared with the archive")
+    list_chats_parser.add_argument("--json", action="store_true", help="Print machine-readable output")
 
     chats = subparsers.add_parser("chats", help="List available Beeper chats")
     chats.add_argument("--json", action="store_true", help="Print machine-readable output")
@@ -406,6 +409,20 @@ def cmd_notify(config_path: Path, text_parts: list[str], chat: str, as_json: boo
     return 0
 
 
+def cmd_list_chats(config_path: Path, as_json: bool) -> int:
+    chats = list_chats(load_config(config_path))
+    if as_json:
+        print(json.dumps({"chats": chats}, indent=2, sort_keys=True))
+        return 0
+    if not chats:
+        print("No chats are known to the local archive.")
+        return 0
+    print("Allowed  Name  Chat ID")
+    for chat in chats:
+        print(f"{'yes' if chat['allowed'] else 'no':7}  {chat['name']}  {chat['chat_id']}")
+    return 0
+
+
 def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int:
     config = load_config(config_path)
     client = make_message_client(config.beeper)
@@ -611,6 +628,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "people":
             return cmd_people(config_path, args)
+        if args.command == "list-chats":
+            return cmd_list_chats(config_path, args.json)
         if args.command == "chats":
             return cmd_chats(config_path, args.query, args.json)
         if args.command == "matrix-restore-keys":
