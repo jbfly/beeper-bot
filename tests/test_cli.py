@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
+from beeper_bot.cli import main as cli_main
+from beeper_bot.config import load_config
 from beeper_bot.db import SCHEMA_VERSION
+from beeper_bot.offline_archive import approve_chat, revoke_chat
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +23,52 @@ ENV["PYTHONPATH"] = str(REPO_ROOT / "src")
 
 
 class CliTest(unittest.TestCase):
+    def _approval_config(self, root: Path) -> Path:
+        config_path = root / "config.toml"
+        config_path.write_text(f'[archive]\npath = "{root / "archive.sqlite3"}"\n')
+        return config_path
+
+    def _run_json(self, config_path: Path, *args: str) -> dict[str, object]:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(cli_main(["--config", str(config_path), *args, "--json"]), 0)
+        return json.loads(output.getvalue())
+
+    def _run_text(self, config_path: Path, *args: str) -> str:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(cli_main(["--config", str(config_path), *args]), 0)
+        return output.getvalue().strip()
+
+    def test_approve_list_and_revoke_are_local(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = self._approval_config(Path(tmpdir))
+            config = load_config(config_path)
+            approve_chat(config, "chat-duarte", "Duarte Mendes")
+            revoke_chat(config, "chat-duarte")
+
+            self.assertEqual(self._run_text(config_path, "approve", "chat-duarte"), "Now archiving: Duarte Mendes")
+            with patch("beeper_bot.cli.make_message_client", side_effect=AssertionError("contacted Beeper")):
+                listed = self._run_json(config_path, "chats", "--local")
+            self.assertEqual(listed["chats"], [{"allowed": True, "chat_id": "chat-duarte", "name": "Duarte Mendes"}])
+
+            self.assertEqual(
+                self._run_text(config_path, "revoke", "chat-duarte"),
+                "Stopped archiving: Duarte Mendes. Already-stored messages are still on disk; no deletion command exists.",
+            )
+            listed = self._run_json(config_path, "chats", "--local")
+            self.assertEqual(listed["chats"][0]["allowed"], False)
+
+    def test_approve_unknown_chat_uses_id_as_local_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = self._approval_config(Path(tmpdir))
+            approved = self._run_json(config_path, "approve", "unknown-chat")
+            self.assertEqual(approved["name"], "unknown-chat")
+            self.assertEqual(
+                self._run_json(config_path, "chats", "--local")["chats"],
+                [{"allowed": True, "chat_id": "unknown-chat", "name": "unknown-chat"}],
+            )
+
     def test_status_json_without_db(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.toml"
