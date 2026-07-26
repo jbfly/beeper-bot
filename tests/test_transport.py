@@ -3,12 +3,12 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from beeper_bot.beeper_api import BeeperApiClient, make_message_client
 from beeper_bot.config import BeeperConfig, load_config
 from beeper_bot.db import init_db_path, open_db
-from beeper_bot.matrix_transport import MatrixTransport
+from beeper_bot.matrix_transport import MatrixTransport, create_chat
 
 
 def _write_config(body: str) -> Path:
@@ -64,6 +64,13 @@ class ReadOnlyTransportTest(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "sending disabled"):
             client.send_message("chat", "hello")
         self._assert_outbound_empty(config)
+
+    def test_create_chat_is_denied_by_default_without_http_call(self) -> None:
+        config = load_config(_write_config(""))
+        with patch("beeper_bot.matrix_transport.urllib.request.urlopen") as urlopen:
+            with self.assertRaisesRegex(PermissionError, "sending disabled"):
+                create_chat(config.beeper, "control")
+        urlopen.assert_not_called()
 
     def test_explicit_allow_send_enables_desktop_send(self) -> None:
         config = load_config(_write_config("[security]\nallow_send = true\n"))

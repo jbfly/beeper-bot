@@ -478,7 +478,9 @@ def cmd_matrix_create_chat(config_path: Path, name: str, topic: str, encrypted: 
     from .matrix_transport import create_chat
 
     config = load_config(config_path)
-    result = create_chat(config.beeper, name, topic=topic, encrypted=encrypted)
+    result = create_chat(
+        config.beeper, name, topic=topic, encrypted=encrypted, allow_send=config.security.allow_send
+    )
     if as_json:
         print(json.dumps(result, sort_keys=True))
     else:

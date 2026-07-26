@@ -155,11 +155,17 @@ class MatrixTransport:
         client.next_batch = None
         resp = await client.sync(timeout=30000, full_state=True)
         self._ingest_sync(resp)
-        if client.should_upload_keys:
+        if self.allow_send and client.should_upload_keys:
             await client.keys_upload()
         self._ready.set()
-        # background sync keeps rooms/timelines and to-device (keys) current
-        asyncio.create_task(client.sync_forever(timeout=30000, full_state=False))
+        if self.allow_send:
+            asyncio.create_task(client.sync_forever(timeout=30000, full_state=False))
+        else:
+            asyncio.create_task(self._a_readonly_sync_forever())
+
+    async def _a_readonly_sync_forever(self) -> None:
+        while True:
+            self._ingest_sync(await self._client.sync(timeout=30000, full_state=False))
 
     async def _on_sync(self, response) -> None:
         self._ingest_sync(response)
@@ -531,7 +537,13 @@ def restore_key_backup(config: BeeperConfig, recovery_key: str) -> dict[str, int
     return {"total": total, "imported": imported, "failed": failed}
 
 
-def create_chat(config: BeeperConfig, name: str, topic: str = "", encrypted: bool = True) -> dict:
+def create_chat(
+    config: BeeperConfig,
+    name: str,
+    topic: str = "",
+    encrypted: bool = True,
+    allow_send: bool = False,
+) -> dict:
     """Create a new Matrix room to serve as a purpose-scoped control chat.
 
     Mints a private room owned by the bot's own account (a "note to self" with a
@@ -543,6 +555,8 @@ def create_chat(config: BeeperConfig, name: str, topic: str = "", encrypted: boo
     Returns {"room_id", "name", "encrypted"}. Add the room_id under
     [control_chats.<name>] in config and restart serve to start polling it.
     """
+    if not allow_send:
+        raise PermissionError("sending disabled: set security.allow_send = true to enable")
     creds = _load_credentials(config)
     homeserver = creds["homeserver"].rstrip("/")
     token = creds["access_token"]
