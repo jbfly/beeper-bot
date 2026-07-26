@@ -88,6 +88,7 @@ class CliTest(unittest.TestCase):
                 conn.execute("INSERT INTO runtime_state VALUES ('sync_backfill_done:chat-duarte', '1', 'now')")
                 conn.execute("INSERT INTO runtime_state VALUES ('control_summary', 'synthetic rolling summary', 'now')")
                 conn.execute("INSERT INTO people VALUES ('person-1', 'Person One', 'now', 'now')")
+                conn.execute("INSERT INTO person_aliases VALUES ('person-1', 'Chat-learned Nickname')")
                 conn.execute("INSERT INTO person_chats VALUES ('person-1', 'chat-duarte')")
                 conn.execute("INSERT INTO control_turns(role, content, chat_id, created_at) VALUES ('user', 'synthetic console question', 'console', 'now')")
                 conn.execute("INSERT INTO control_turns(role, content, chat_id, created_at) VALUES ('assistant', 'synthetic control reply', 'control-chat-1', 'now')")
@@ -116,8 +117,9 @@ class CliTest(unittest.TestCase):
                 self._run_text(config_path, "forget", "chat-duarte", "--yes"),
                 "Deleted 2 messages from Duarte Mendes, plus that chat's search index entries and attachment text. "
                 "For every chat—not just Duarte Mendes—cleared the entire operator/bot conversation history and its "
-                "summary, all diagnostic traces, and every memory proposal, including all pending ones. Saved facts "
-                "were kept; 1 may quote any archived chat. Queued operator notifications were kept.",
+                "summary, all diagnostic traces, and every memory proposal, including all pending ones. Saved facts, "
+                "saved people's names, and any nicknames learned from chats were kept, including the forgotten chat's "
+                "own name; of the saved facts, 1 may quote any archived chat. Queued operator notifications were kept.",
             )
             self.assertEqual(search_archive(config, "zebrastone").results, [])
             with open_db(config.archive.path) as conn:
@@ -134,6 +136,8 @@ class CliTest(unittest.TestCase):
                     ["synthetic saved quote", ""],
                 )
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM memory_facts WHERE source_text != ''").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT canonical_name FROM people WHERE person_id = 'person-1'").fetchone()[0], "Person One")
+                self.assertEqual(conn.execute("SELECT alias FROM person_aliases WHERE person_id = 'person-1'").fetchone()[0], "Chat-learned Nickname")
                 self.assertEqual(conn.execute("SELECT text FROM outbound_queue").fetchone()[0], "synthetic notification")
                 self.assertIsNone(conn.execute("SELECT 1 FROM runtime_state WHERE key = 'sync_backfill_done:chat-duarte'").fetchone())
                 self.assertIsNone(conn.execute("SELECT 1 FROM runtime_state WHERE key = 'control_summary'").fetchone())

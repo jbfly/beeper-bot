@@ -477,8 +477,9 @@ def cmd_forget(config_path: Path, chat_id: str, confirmed: bool) -> int:
     print(
         f"Deleted {count:,} messages from {result['name']}, plus that chat's search index entries and attachment text. "
         f"For every chat—not just {result['name']}—cleared the entire operator/bot conversation history and its summary, "
-        f"all diagnostic traces, and every memory proposal, including all pending ones. Saved facts were kept; "
-        f"{quoted_facts:,} may quote any archived chat. Queued operator notifications were kept."
+        f"all diagnostic traces, and every memory proposal, including all pending ones. Saved facts, saved people's "
+        f"names, and any nicknames learned from chats were kept, including the forgotten chat's own name; of the "
+        f"saved facts, {quoted_facts:,} may quote any archived chat. Queued operator notifications were kept."
     )
     return 0
 
