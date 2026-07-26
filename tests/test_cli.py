@@ -13,8 +13,9 @@ from unittest.mock import patch
 
 from beeper_bot.cli import main as cli_main
 from beeper_bot.config import load_config
-from beeper_bot.db import SCHEMA_VERSION
+from beeper_bot.db import SCHEMA_VERSION, open_db
 from beeper_bot.offline_archive import approve_chat, revoke_chat
+from beeper_bot.retrieval import search_archive
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -54,10 +55,124 @@ class CliTest(unittest.TestCase):
 
             self.assertEqual(
                 self._run_text(config_path, "revoke", "chat-duarte"),
-                "Stopped archiving: Duarte Mendes. Already-stored messages are still on disk; no deletion command exists.",
+                "Stopped archiving: Duarte Mendes. Stored messages remain; run `beeper-bot forget <chat_id> --yes` to delete them.",
             )
             listed = self._run_json(config_path, "chats", "--local")
             self.assertEqual(listed["chats"][0]["allowed"], False)
+
+    def test_forget_requires_confirmation_and_deletes_only_target_chat(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = self._approval_config(Path(tmpdir))
+            config = load_config(config_path)
+            approve_chat(config, "chat-duarte", "Duarte Mendes")
+            approve_chat(config, "chat-other", "Other Chat")
+            with open_db(config.archive.path) as conn:
+                for message_id, chat_id, text in (
+                    ("duarte-1", "chat-duarte", "zebrastone target"),
+                    ("duarte-2", "chat-duarte", "synthetic media target"),
+                    ("other-1", "chat-other", "synthetic other chat"),
+                ):
+                    conn.execute(
+                        """INSERT INTO messages(message_id, chat_id, sort_key, timestamp, message_type, text,
+                           normalized_text, raw_json, created_at, updated_at) VALUES (?, ?, ?, '2026-01-01T00:00:00Z',
+                           'TEXT', ?, ?, '{}', 'now', 'now')""",
+                        (message_id, chat_id, 1 if message_id.endswith("1") else 2, text, text),
+                    )
+                    conn.execute("INSERT INTO message_fts VALUES (?, ?, ?, '', ?)", (message_id, chat_id, chat_id, text))
+                conn.execute(
+                    """INSERT INTO attachment_derived_text(message_id, chat_id, attachment_id, kind, derived_text,
+                       created_at, updated_at) VALUES ('duarte-2', 'chat-duarte', 'media-1', 'image',
+                       'synthetic media target', 'now', 'now')"""
+                )
+                conn.execute("INSERT INTO sync_state VALUES ('chat-duarte', 2, 'now', 'now')")
+                conn.execute("INSERT INTO runtime_state VALUES ('sync_backfill_done:chat-duarte', '1', 'now')")
+                conn.execute("INSERT INTO runtime_state VALUES ('control_summary', 'synthetic rolling summary', 'now')")
+                conn.execute("INSERT INTO people VALUES ('person-1', 'Person One', 'now', 'now')")
+                conn.execute("INSERT INTO person_aliases VALUES ('person-1', 'Chat-learned Nickname')")
+                conn.execute("INSERT INTO person_chats VALUES ('person-1', 'chat-duarte')")
+                conn.execute("INSERT INTO control_turns(role, content, chat_id, created_at) VALUES ('user', 'synthetic console question', 'console', 'now')")
+                conn.execute("INSERT INTO control_turns(role, content, chat_id, created_at) VALUES ('assistant', 'synthetic control reply', 'control-chat-1', 'now')")
+                conn.execute("""INSERT INTO traces(trace_id, trace_kind, question, final_answer, created_at, updated_at)
+                             VALUES ('trace-1', 'ask', 'synthetic trace question', 'synthetic trace answer', 'now', 'now')""")
+                conn.execute("""INSERT INTO trace_events(trace_id, seq_no, event_kind, payload_json, created_at)
+                             VALUES ('trace-1', 1, 'prompt', '{"text":"synthetic trace payload"}', 'now')""")
+                conn.execute("""INSERT INTO memory_updates(update_kind, payload_json, status, created_at, updated_at) VALUES
+                             ('fact', '{"source_text":"synthetic pending quote"}', 'pending', 'now', 'now'),
+                             ('fact', '{"source_text":"synthetic applied quote"}', 'applied', 'now', 'now')""")
+                conn.execute("""INSERT INTO memory_facts(subject, predicate, object, source_text, created_at, updated_at) VALUES
+                             ('Anna', 'note', 'quoted', 'synthetic saved quote', 'now', 'now'),
+                             ('Anna', 'note', 'unquoted', '', 'now', 'now')""")
+                conn.execute("INSERT INTO outbound_queue(target, text, created_at) VALUES ('operator', 'synthetic notification', 'now')")
+                conn.commit()
+
+            self.assertEqual(len(search_archive(config, "zebrastone").results), 1)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(cli_main(["--config", str(config_path), "forget", "chat-duarte"]), 2)
+            self.assertEqual(output.getvalue().strip(), "Refusing to delete 2 messages from Duarte Mendes without --yes.")
+            with open_db(config.archive.path) as conn:
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM messages WHERE chat_id = 'chat-duarte'").fetchone()[0], 2)
+
+            self.assertEqual(
+                self._run_text(config_path, "forget", "chat-duarte", "--yes"),
+                "Deleted 2 messages from Duarte Mendes, plus that chat's search index entries and attachment text. "
+                "For every chat—not just Duarte Mendes—cleared the entire operator/bot conversation history and its "
+                "summary, all diagnostic traces, and every memory proposal, including all pending ones. Saved facts, "
+                "saved people's names, and any nicknames learned from chats were kept, including the forgotten chat's "
+                "own name; of the saved facts, 1 may quote any archived chat. Queued operator notifications were kept.",
+            )
+            self.assertEqual(search_archive(config, "zebrastone").results, [])
+            with open_db(config.archive.path) as conn:
+                for table in ("messages", "message_fts", "attachment_derived_text", "sync_state", "person_chats"):
+                    self.assertEqual(conn.execute(f"SELECT COUNT(*) FROM {table} WHERE chat_id = 'chat-duarte'").fetchone()[0], 0)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM control_turns").fetchone()[0], 0)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM messages WHERE chat_id = 'chat-other'").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM message_fts WHERE chat_id = 'chat-other'").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0], 0)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM trace_events").fetchone()[0], 0)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM memory_updates").fetchone()[0], 0)
+                self.assertEqual(
+                    [row[0] for row in conn.execute("SELECT source_text FROM memory_facts ORDER BY fact_id")],
+                    ["synthetic saved quote", ""],
+                )
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM memory_facts WHERE source_text != ''").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT canonical_name FROM people WHERE person_id = 'person-1'").fetchone()[0], "Person One")
+                self.assertEqual(conn.execute("SELECT alias FROM person_aliases WHERE person_id = 'person-1'").fetchone()[0], "Chat-learned Nickname")
+                self.assertEqual(conn.execute("SELECT text FROM outbound_queue").fetchone()[0], "synthetic notification")
+                self.assertIsNone(conn.execute("SELECT 1 FROM runtime_state WHERE key = 'sync_backfill_done:chat-duarte'").fetchone())
+                self.assertIsNone(conn.execute("SELECT 1 FROM runtime_state WHERE key = 'control_summary'").fetchone())
+                chat = conn.execute("SELECT name, is_allowed FROM chats WHERE chat_id = 'chat-duarte'").fetchone()
+                self.assertEqual((chat["name"], chat["is_allowed"]), ("Duarte Mendes", 0))
+
+            self._run_text(config_path, "forget", "unknown-chat", "--yes")
+            with open_db(config.archive.path) as conn:
+                self.assertEqual(conn.execute("SELECT is_allowed FROM chats WHERE chat_id = 'unknown-chat'").fetchone()[0], 0)
+
+    def test_forget_rolls_back_every_delete_on_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = self._approval_config(Path(tmpdir))
+            config = load_config(config_path)
+            approve_chat(config, "chat-duarte", "Duarte Mendes")
+            with open_db(config.archive.path) as conn:
+                conn.execute("""INSERT INTO messages(message_id, chat_id, sort_key, timestamp, message_type, text,
+                             normalized_text, raw_json, created_at, updated_at) VALUES
+                             ('duarte-1', 'chat-duarte', 1, '2026-01-01T00:00:00Z', 'TEXT', 'synthetic rollback target',
+                              'synthetic rollback target', '{}', 'now', 'now')""")
+                conn.execute("INSERT INTO message_fts VALUES ('duarte-1', 'chat-duarte', 'Duarte Mendes', '', 'synthetic rollback target')")
+                conn.execute("INSERT INTO control_turns(role, content, chat_id, created_at) VALUES ('user', 'synthetic rollback question', 'console', 'now')")
+                conn.execute("INSERT INTO runtime_state VALUES ('control_summary', 'synthetic rollback summary', 'now')")
+                conn.execute("CREATE TRIGGER fail_message_delete BEFORE DELETE ON messages BEGIN SELECT RAISE(ABORT, 'stop'); END")
+                conn.commit()
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(cli_main(["--config", str(config_path), "forget", "chat-duarte", "--yes"]), 1)
+            with open_db(config.archive.path) as conn:
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM messages WHERE chat_id = 'chat-duarte'").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM message_fts WHERE chat_id = 'chat-duarte'").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM control_turns").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT value FROM runtime_state WHERE key = 'control_summary'").fetchone()[0], "synthetic rollback summary")
+                self.assertEqual(conn.execute("SELECT is_allowed FROM chats WHERE chat_id = 'chat-duarte'").fetchone()[0], 1)
 
     def test_approve_unknown_chat_uses_id_as_local_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

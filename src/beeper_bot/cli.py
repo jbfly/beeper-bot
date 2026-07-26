@@ -19,7 +19,7 @@ from .evals import (
     suite_result_to_dict,
 )
 from .llm import LlmError, ask_archive, format_ask_response
-from .offline_archive import approve_chat, import_whatsapp, list_approved_chats, list_chats, revoke_chat, scoped_search, surrounding_thread
+from .offline_archive import approve_chat, forget_chat, import_whatsapp, list_approved_chats, list_chats, revoke_chat, scoped_search, surrounding_thread
 from .people import (load_person_graph, seed_person, add_person_alias, add_person_chat,
                     delete_person, delete_person as remove_person)
 from .retrieval import format_find_response, search_archive
@@ -101,6 +101,10 @@ def build_parser() -> argparse.ArgumentParser:
     revoke = subparsers.add_parser("revoke", help="Stop archiving and searching one local chat")
     revoke.add_argument("chat_id")
     revoke.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    forget = subparsers.add_parser("forget", help="Permanently delete one chat's stored archive data")
+    forget.add_argument("chat_id")
+    forget.add_argument("--yes", action="store_true", help="Confirm permanent deletion")
 
     wa_import = subparsers.add_parser("import-whatsapp", help="Import an approved WhatsApp ZIP or TXT export")
     wa_import.add_argument("path", type=Path)
@@ -452,15 +456,32 @@ def cmd_revoke(config_path: Path, chat_id: str, as_json: bool) -> int:
         "name": str(known["name"]) if known else chat_id.strip(),
         "revoked": revoked,
         "stored_messages_deleted": False,
-        "deletion_supported": False,
+        "deletion_supported": True,
     }
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     elif revoked:
-        print(f"Stopped archiving: {payload['name']}. Already-stored messages are still on disk; no deletion command exists.")
+        print(f"Stopped archiving: {payload['name']}. Stored messages remain; run `beeper-bot forget <chat_id> --yes` to delete them.")
     else:
         print(f"No local chat found: {payload['chat_id']}", file=sys.stderr)
     return 0 if revoked else 1
+
+
+def cmd_forget(config_path: Path, chat_id: str, confirmed: bool) -> int:
+    result = forget_chat(load_config(config_path), chat_id, confirmed=confirmed)
+    count = int(result["message_count"])
+    if not confirmed:
+        print(f"Refusing to delete {count:,} messages from {result['name']} without --yes.")
+        return 2
+    quoted_facts = int(result["quoted_fact_count"])
+    print(
+        f"Deleted {count:,} messages from {result['name']}, plus that chat's search index entries and attachment text. "
+        f"For every chat—not just {result['name']}—cleared the entire operator/bot conversation history and its summary, "
+        f"all diagnostic traces, and every memory proposal, including all pending ones. Saved facts, saved people's "
+        f"names, and any nicknames learned from chats were kept, including the forgotten chat's own name; of the "
+        f"saved facts, {quoted_facts:,} may quote any archived chat. Queued operator notifications were kept."
+    )
+    return 0
 
 
 def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int:
@@ -656,6 +677,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_approve(config_path, args.chat_id, args.json)
         if args.command == "revoke":
             return cmd_revoke(config_path, args.chat_id, args.json)
+        if args.command == "forget":
+            return cmd_forget(config_path, args.chat_id, args.yes)
         if args.command == "import-whatsapp":
             payload = import_whatsapp(load_config(config_path), args.path, args.chat_id, args.name, args.date_order)
             print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
