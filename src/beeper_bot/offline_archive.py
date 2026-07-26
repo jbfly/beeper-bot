@@ -83,8 +83,10 @@ def forget_chat(config: AppConfig, chat_id: str, *, confirmed: bool = False) -> 
             chat = conn.execute("SELECT name FROM chats WHERE chat_id = ?", (chat_id,)).fetchone()
             name = str(chat["name"]) if chat else chat_id
             message_count = int(conn.execute("SELECT COUNT(*) FROM messages WHERE chat_id = ?", (chat_id,)).fetchone()[0])
+            quoted_fact_count = int(conn.execute("SELECT COUNT(*) FROM memory_facts WHERE source_text != ''").fetchone()[0])
             if not confirmed:
-                return {"chat_id": chat_id, "name": name, "message_count": message_count, "deleted": False}
+                return {"chat_id": chat_id, "name": name, "message_count": message_count,
+                        "quoted_fact_count": quoted_fact_count, "deleted": False}
 
             conn.execute(
                 """
@@ -96,6 +98,9 @@ def forget_chat(config: AppConfig, chat_id: str, *, confirmed: bool = False) -> 
                 """,
                 (chat_id, name, now, now, now),
             )
+            conn.execute("DELETE FROM trace_events")
+            conn.execute("DELETE FROM traces")
+            conn.execute("DELETE FROM memory_updates")
             for table in ("attachment_derived_text", "message_fts", "control_turns", "messages", "sync_state", "person_chats"):
                 conn.execute(f"DELETE FROM {table} WHERE chat_id = ?", (chat_id,))
             conn.execute("DELETE FROM runtime_state WHERE key = ?", (f"{BACKFILL_DONE_KEY_PREFIX}{chat_id}",))
@@ -103,7 +108,8 @@ def forget_chat(config: AppConfig, chat_id: str, *, confirmed: bool = False) -> 
         except Exception:
             conn.rollback()
             raise
-    return {"chat_id": chat_id, "name": name, "message_count": message_count, "deleted": True}
+    return {"chat_id": chat_id, "name": name, "message_count": message_count,
+            "quoted_fact_count": quoted_fact_count, "deleted": True}
 
 
 def list_chats(config: AppConfig) -> list[dict[str, object]]:

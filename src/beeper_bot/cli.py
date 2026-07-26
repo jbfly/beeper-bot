@@ -473,7 +473,12 @@ def cmd_forget(config_path: Path, chat_id: str, confirmed: bool) -> int:
     if not confirmed:
         print(f"Refusing to delete {count:,} messages from {result['name']} without --yes.")
         return 2
-    print(f"Deleted {count:,} messages from {result['name']}. Nothing for this chat remains in the archive.")
+    quoted_facts = int(result["quoted_fact_count"])
+    print(
+        f"Deleted {count:,} messages from {result['name']} and that chat's search index entries, attachment text, "
+        f"and control-chat transcript. Also cleared all chat diagnostic traces and memory update proposals. "
+        f"Saved facts that may still quote this chat: {quoted_facts:,}. Queued operator notifications were not deleted."
+    )
     return 0
 
 

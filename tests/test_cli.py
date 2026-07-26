@@ -89,6 +89,17 @@ class CliTest(unittest.TestCase):
                 conn.execute("INSERT INTO people VALUES ('person-1', 'Person One', 'now', 'now')")
                 conn.execute("INSERT INTO person_chats VALUES ('person-1', 'chat-duarte')")
                 conn.execute("INSERT INTO control_turns(role, content, chat_id, created_at) VALUES ('user', 'synthetic control target', 'chat-duarte', 'now')")
+                conn.execute("""INSERT INTO traces(trace_id, trace_kind, question, final_answer, created_at, updated_at)
+                             VALUES ('trace-1', 'ask', 'synthetic trace question', 'synthetic trace answer', 'now', 'now')""")
+                conn.execute("""INSERT INTO trace_events(trace_id, seq_no, event_kind, payload_json, created_at)
+                             VALUES ('trace-1', 1, 'prompt', '{"text":"synthetic trace payload"}', 'now')""")
+                conn.execute("""INSERT INTO memory_updates(update_kind, payload_json, status, created_at, updated_at) VALUES
+                             ('fact', '{"source_text":"synthetic pending quote"}', 'pending', 'now', 'now'),
+                             ('fact', '{"source_text":"synthetic applied quote"}', 'applied', 'now', 'now')""")
+                conn.execute("""INSERT INTO memory_facts(subject, predicate, object, source_text, created_at, updated_at) VALUES
+                             ('Anna', 'note', 'quoted', 'synthetic saved quote', 'now', 'now'),
+                             ('Anna', 'note', 'unquoted', '', 'now', 'now')""")
+                conn.execute("INSERT INTO outbound_queue(target, text, created_at) VALUES ('operator', 'synthetic notification', 'now')")
                 conn.commit()
 
             self.assertEqual(len(search_archive(config, "zebrastone").results), 1)
@@ -99,14 +110,26 @@ class CliTest(unittest.TestCase):
             with open_db(config.archive.path) as conn:
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM messages WHERE chat_id = 'chat-duarte'").fetchone()[0], 2)
 
-            self.assertEqual(self._run_text(config_path, "forget", "chat-duarte", "--yes"),
-                             "Deleted 2 messages from Duarte Mendes. Nothing for this chat remains in the archive.")
+            self.assertEqual(
+                self._run_text(config_path, "forget", "chat-duarte", "--yes"),
+                "Deleted 2 messages from Duarte Mendes and that chat's search index entries, attachment text, "
+                "and control-chat transcript. Also cleared all chat diagnostic traces and memory update proposals. "
+                "Saved facts that may still quote this chat: 1. Queued operator notifications were not deleted.",
+            )
             self.assertEqual(search_archive(config, "zebrastone").results, [])
             with open_db(config.archive.path) as conn:
                 for table in ("messages", "message_fts", "attachment_derived_text", "sync_state", "person_chats", "control_turns"):
                     self.assertEqual(conn.execute(f"SELECT COUNT(*) FROM {table} WHERE chat_id = 'chat-duarte'").fetchone()[0], 0)
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM messages WHERE chat_id = 'chat-other'").fetchone()[0], 1)
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM message_fts WHERE chat_id = 'chat-other'").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0], 0)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM trace_events").fetchone()[0], 0)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM memory_updates").fetchone()[0], 0)
+                self.assertEqual(
+                    [row[0] for row in conn.execute("SELECT source_text FROM memory_facts ORDER BY fact_id")],
+                    ["synthetic saved quote", ""],
+                )
+                self.assertEqual(conn.execute("SELECT text FROM outbound_queue").fetchone()[0], "synthetic notification")
                 self.assertIsNone(conn.execute("SELECT 1 FROM runtime_state WHERE key = 'sync_backfill_done:chat-duarte'").fetchone())
                 chat = conn.execute("SELECT name, is_allowed FROM chats WHERE chat_id = 'chat-duarte'").fetchone()
                 self.assertEqual((chat["name"], chat["is_allowed"]), ("Duarte Mendes", 0))
