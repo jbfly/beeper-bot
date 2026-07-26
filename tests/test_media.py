@@ -164,6 +164,26 @@ class MediaTest(MediaTestBase):
         self.assertGreaterEqual(len(response.results), 1)
         self.assertEqual(response.results[0].message_id, "img-2")
 
+    def test_captioned_image_keeps_caption_and_placeholder_after_description(self) -> None:
+        config, client, tmpdir = self._config_with_media()
+        self.addCleanup(tmpdir.cleanup)
+        client.messages["chat-a"][1]["text"] = "Receipt from the hardware store"
+        sync_chats(config, client)
+
+        with open_db(config.archive.path) as conn:
+            synced = str(conn.execute("SELECT text FROM messages WHERE message_id = 'img-2'").fetchone()["text"])
+        self.assertIn("Receipt from the hardware store", synced)
+        self.assertIn("[image: photo.jpg]", synced)
+
+        run_derivation_pass(config, "image", limit=10, llm_client=FakeMediaClient())
+        with open_db(config.archive.path) as conn:
+            indexed = str(conn.execute("SELECT text FROM messages WHERE message_id = 'img-2'").fetchone()["text"])
+            searchable = str(conn.execute("SELECT text FROM message_fts WHERE message_id = 'img-2'").fetchone()["text"])
+        for text in (indexed, searchable):
+            self.assertIn("Receipt from the hardware store", text)
+            self.assertIn("[image: photo.jpg]", text)
+            self.assertIn("PIER 39", text)
+
     def test_derived_text_survives_resync(self) -> None:
         config, client, tmpdir = self._config_with_media()
         self.addCleanup(tmpdir.cleanup)

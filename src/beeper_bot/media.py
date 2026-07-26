@@ -219,20 +219,22 @@ def transcribe_voice_memo(config: AppConfig, path: Path, llm_client: MediaLlmCli
 
 def _apply_derived_text_to_message(conn, message_id: str, derived_text: str) -> None:
     row = conn.execute(
-        "SELECT m.chat_id, m.sender_name, c.name AS chat_name FROM messages m LEFT JOIN chats c ON c.chat_id = m.chat_id WHERE m.message_id = ?",
+        "SELECT m.chat_id, m.sender_name, m.text, c.name AS chat_name FROM messages m LEFT JOIN chats c ON c.chat_id = m.chat_id WHERE m.message_id = ?",
         (message_id,),
     ).fetchone()
     if row is None:
         return
+    existing_text = str(row["text"] or "")
+    searchable_text = existing_text if derived_text in existing_text else "\n".join(filter(None, (existing_text, derived_text)))
     now = utc_now()
     conn.execute(
         "UPDATE messages SET text = ?, normalized_text = ?, updated_at = ? WHERE message_id = ?",
-        (derived_text, normalize_text(derived_text), now, message_id),
+        (searchable_text, normalize_text(searchable_text), now, message_id),
     )
     conn.execute("DELETE FROM message_fts WHERE message_id = ?", (message_id,))
     conn.execute(
         "INSERT INTO message_fts(message_id, chat_id, chat_name, sender_name, text) VALUES (?, ?, ?, ?, ?)",
-        (message_id, str(row["chat_id"]), str(row["chat_name"] or ""), str(row["sender_name"] or ""), derived_text),
+        (message_id, str(row["chat_id"]), str(row["chat_name"] or ""), str(row["sender_name"] or ""), searchable_text),
     )
 
 

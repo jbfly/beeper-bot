@@ -81,16 +81,39 @@ def find_possible_duplicate(conn: sqlite3.Connection, chat_id: str, message_id: 
     ).fetchone()
     return str(row["message_id"]) if row else None
 
+ATTACHMENT_LABELS = {
+    "IMAGE": "image",
+    "IMG": "image",
+    "VOICE": "voice message",
+    "AUDIO": "audio",
+    "VIDEO": "video",
+    "FILE": "document",
+    "DOCUMENT": "document",
+    "STICKER": "sticker",
+    "GIF": "gif",
+}
+
+
+def _attachment_label(message: dict[str, Any], attachment: dict[str, Any]) -> str:
+    if attachment.get("isSticker"):
+        return "sticker"
+    if attachment.get("isGif"):
+        return "gif"
+    message_type = str(message.get("type") or "").upper()
+    attachment_type = str(attachment.get("type") or "").upper()
+    if attachment.get("isVoiceNote") or message_type == "VOICE":
+        return "voice message"
+    return ATTACHMENT_LABELS.get(attachment_type) or ATTACHMENT_LABELS.get(message_type, "attachment")
+
+
 def _message_text(message: dict[str, Any]) -> str | None:
-    text = message.get("text")
-    if text not in (None, ""):
-        return str(text)
-    if message.get("type") == "IMAGE":
-        attachments = message.get("attachments", [])
-        if attachments and isinstance(attachments, list):
-            file_name = attachments[0].get("fileName") if isinstance(attachments[0], dict) else None
-            return f"[image: {file_name or 'attachment'}]"
-    return None
+    parts = [str(message["text"])] if message.get("text") not in (None, "") else []
+    attachments = message.get("attachments")
+    if isinstance(attachments, list):
+        for attachment in attachments:
+            if isinstance(attachment, dict):
+                parts.append(f"[{_attachment_label(message, attachment)}: {attachment.get('fileName') or 'attachment'}]")
+    return "\n".join(parts) or None
 
 
 def _sort_key(message: dict[str, Any]) -> int | None:
