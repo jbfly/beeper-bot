@@ -6,6 +6,10 @@
 - The archive is not uploaded; it stays on your Mac.
 - This setup cannot send WhatsApp messages or reply to anyone.
 
+## Current state
+
+As of 2026-07-26, the archive has **25 approved chats**: 24 live Beeper chats plus the offline `wa-duarte-mendes` import. It contains **57,318 messages**.
+
 ## Anna's steps
 
 1. Open **Beeper** from `/Applications` and log in.
@@ -21,6 +25,8 @@
 5. You do not need to manage technical IDs or approval commands. Ask an agent **“what chats are you archiving?”** or **“also archive the thread with X.”**
 
 ## Operator (John) steps
+
+Connect over the LAN as `annawright` at `Annas-MacBook-Pro.local` or `192.168.1.36`. Do not rely on WireGuard for this work: its tunnel dropped repeatedly under Beeper's CPU load during the first sync.
 
 Run these on Anna's Mac after Beeper is linked:
 
@@ -52,31 +58,64 @@ Run these on Anna's Mac after Beeper is linked:
    grep -n '^[[:space:]]*allow_send' ~/.config/beeper-bot/config.toml
    ```
 
-   No output, or `allow_send = false`, is safe. Stop if it says `true`.
-5. Confirm `~/search-whatsapp.sh` exists and works before handing the Mac back to Anna.
+   `[security] allow_send` defaults to `false`; sending raises `PermissionError` while it is false. Keep the setting absent or explicitly `false`. **Nothing in this setup should ever set `allow_send = true`.**
+5. Do not add `api_base` to the config. The built-in default resolves correctly, and `beeper-bot status` works without an explicit value.
+6. Confirm `~/search-whatsapp.sh` exists and works before handing the Mac back to Anna.
 
-## Adding or removing a chat later
+## Adding, revoking, or deleting a chat
+
+These commands operate on the local archive database:
 
 ```sh
 beeper-bot approve <chat_id>
 # Now archiving: <chat name>
 
 beeper-bot revoke <chat_id>
-# Stopped archiving: <chat name>. Already-stored messages are still on disk; no deletion command exists.
+# Stops archiving and searching it, but keeps its stored data.
+
+beeper-bot forget <chat_id> --yes
+# Permanently deletes that chat's stored archive data.
+
+beeper-bot chats --local
+# Shows the local approval state without contacting Beeper.
 ```
 
-Use `beeper-bot chats --local` to check the result. These three commands use only the local archive database.
+`forget` refuses deletion unless `--yes` is supplied. After deletion it reports what it deleted: the chat's messages, search index entries, and attachment text; it also reports the archive-wide operator/bot history, summaries, diagnostics, and memory proposals that it cleared. It explicitly says what it retained, including saved facts, people's names and nicknames, and queued operator notifications. Read that output before treating the deletion as complete.
 
-## KNOWN LIMITS
+## Automatic sync
 
-- **Revoking is not deletion.** `revoke` stops future archiving and removes the chat from search, but already-stored messages remain on disk. There is currently **no deletion command**.
+A launchd job named `com.exceptionalspirits.beeper-sync` runs every 15 minutes on Anna's Mac. It calls `~/bb-sync.sh` and appends its log to `~/bb-sync.log`.
+
+The wrapper reads the approved chat list from the database and passes those IDs to sync. This is required because bare `beeper-bot sync` does **not** read database approvals: it reads `indexed_chat_ids` from config, which is empty here, and exits with an error. Approving a new chat therefore needs no config change and no launchd job edit; the wrapper picks it up from the database on its next run.
+
+## Known limit: history backfill
+
+WhatsApp gives a newly linked device only a small, unpredictable fragment of history. This was verified empirically on 2026-07-26 by manually paging Beeper's API beyond the bot's sync: `hasMore` kept returning true, but message timestamps never went earlier. Raising `history_backfill_pages` does not recover older history.
+
+For real historic conversations, a WhatsApp offline export is the only source. The Duarte export contains **57,083 messages** dating back to August 2023.
+
+Daily counts are snapshotted to `~/bb-history.csv` so archive growth can be compared over time. Its columns are `date, chat_id, count, oldest, newest`; it contains IDs and counts/timestamps only, never chat names or message text.
+
+## Other known limits
+
+- **Revoking is not deletion.** `revoke` stops future archiving and removes the chat from search, but already-stored messages remain until `beeper-bot forget <chat_id> --yes` is run.
 - **Attachment contents are not searchable at launch.** Photos and voice memos become content-searchable only after `beeper-bot index-media`, which needs a multimodal model at `127.0.0.1:8090`; that model is not present on Anna's Mac.
-- A voice memo leaves no searchable trace until indexed. An image leaves its caption, or a placeholder such as `[image: filename]`. PDF and other document contents are never indexed.
+- A voice memo leaves no searchable trace until indexed. An image leaves its caption or a generated placeholder. PDF and other document contents are never indexed.
 - If the model is missing, `index-media` marks the item failed but still exits with status 0. Automation that checks only the exit status can miss the failure.
 
 ## Privacy/security invariants
 
 - The archive database is created with `0600` permissions: only Anna's Mac account can read or write it.
 - Database files are gitignored. Never commit, copy into a repository, or paste chat data into issues or logs.
-- Beeper access is read-only in this setup. Message sending raises `PermissionError` unless explicitly enabled.
-- `[security] allow_send` defaults to `false`; keep it absent or set to `false`.
+- Beeper access is read-only in this setup. Message sending raises `PermissionError` unless explicitly enabled; never enable `[security] allow_send` for this use case.
+- The E2EE concern is **resolved**: suppressing `keys_upload` did not break decryption during the first live sync, which produced zero unreadable messages.
+
+## Development trap: worktree tests
+
+The shared `~/git/beeper-bot/.venv` is an editable install whose `.pth` file points to `~/git/beeper-bot/src`. Running tests from another worktree without setting `PYTHONPATH` therefore silently tests the main checkout instead of the worktree.
+
+Always run worktree tests with the worktree source first, for example:
+
+```sh
+PYTHONPATH="$PWD/src" ~/git/beeper-bot/.venv/bin/pytest
+```
