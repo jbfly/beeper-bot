@@ -201,7 +201,7 @@ class BridgeLoopResult:
 class ControlBridge:
     def __init__(self, config: AppConfig, api_client: BridgeApiClient | None = None):
         self.config = config
-        self.api_client = api_client or make_message_client(config.beeper)
+        self.api_client = api_client or make_message_client(config.beeper, allow_send=config.security.allow_send)
         self.busy = False
         self._chat_listing: list[dict] = []
         self._chat_listing_at: float = 0.0

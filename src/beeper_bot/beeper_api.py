@@ -36,8 +36,9 @@ def _parse_message_page(chat_id: str, payload: Any) -> MessagePage:
 
 
 class BeeperApiClient:
-    def __init__(self, config: BeeperConfig):
+    def __init__(self, config: BeeperConfig, allow_send: bool = False):
         self.config = config
+        self.allow_send = allow_send
 
     def _load_token(self) -> str:
         token_path = Path(self.config.token_file)
@@ -129,11 +130,13 @@ class BeeperApiClient:
         return self.fetch_messages_page(chat_id).items
 
     def send_message(self, chat_id: str, text: str) -> None:
+        if not self.allow_send:
+            raise PermissionError("sending disabled: set security.allow_send = true to enable")
         quoted = parse.quote(chat_id, safe="")
         self._request("POST", f"/chats/{quoted}/messages", {"text": text})
 
 
-def make_message_client(config: BeeperConfig):
+def make_message_client(config: BeeperConfig, allow_send: bool = False):
     """Return the configured transport: Beeper Desktop API or matrix-nio.
 
     Both expose the same fetch_all_chats / fetch_chat / fetch_messages[_page] /
@@ -142,5 +145,5 @@ def make_message_client(config: BeeperConfig):
     if getattr(config, "transport", "desktop-api") == "matrix":
         from .matrix_transport import MatrixTransport
 
-        return MatrixTransport(config)
-    return BeeperApiClient(config)
+        return MatrixTransport(config, allow_send=allow_send)
+    return BeeperApiClient(config, allow_send=allow_send)
