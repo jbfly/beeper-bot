@@ -88,3 +88,7 @@ path. Single-case run-to-run flips can still occur from llama-server
 KV-cache reuse; see `docs/control-chat-memory-and-eval-plan.md` §4.3.1.
 
 Use `--deterministic` for comparison runs. That pins answer and planner temperatures to `0.0` unless explicitly overridden.
+
+## Tests
+
+From a git worktree, run `PYTHONPATH=$PWD/src ~/git/beeper-bot/.venv/bin/python -m unittest discover -s tests` so the editable shared environment imports that worktree's source.

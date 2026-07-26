@@ -30,6 +30,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import threading
 import urllib.error
 import urllib.request
@@ -40,6 +41,8 @@ from typing import Any
 
 from .beeper_api import BeeperApiError, MessagePage
 from .config import BeeperConfig
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CREDENTIALS = Path.home() / ".config" / "beeper-bot" / "matrix-credentials.json"
 DEFAULT_STORE = Path.home() / ".local" / "state" / "beeper-bot" / "matrix-store"
@@ -144,9 +147,9 @@ class MatrixTransport:
         )
         self._client = client
         # Response callbacks only fire inside sync_forever, not the manual
-        # sync() below, so we ingest the initial response by hand and let the
-        # callback handle every sync after that.
-        client.add_response_callback(self._on_sync, SyncResponse)
+        # readonly sync loop below.
+        if self.allow_send:
+            client.add_response_callback(self._on_sync, SyncResponse)
 
         # hungryserv incremental sync only returns recently-active rooms, so a
         # resumed sync token hides quiet rooms (e.g. the control chat). Force a
@@ -164,8 +167,15 @@ class MatrixTransport:
             asyncio.create_task(self._a_readonly_sync_forever())
 
     async def _a_readonly_sync_forever(self) -> None:
+        backoff = 5
         while True:
-            self._ingest_sync(await self._client.sync(timeout=30000, full_state=False))
+            try:
+                self._ingest_sync(await self._client.sync(timeout=30000, full_state=False))
+                backoff = 5
+            except Exception:
+                logger.exception("Readonly Matrix sync failed; retrying in %s seconds", backoff)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
 
     async def _on_sync(self, response) -> None:
         self._ingest_sync(response)
