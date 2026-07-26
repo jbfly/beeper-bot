@@ -59,6 +59,42 @@ class SyncTest(unittest.TestCase):
     def test_normalize_text(self) -> None:
         self.assertEqual(normalize_text("  hi\r\nthere\t\tfriend  "), "hi\nthere friend")
 
+    def test_sync_indexes_filenames_for_all_attachment_types(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = load_config(self._write_config(tmpdir, ["chat-a"]))
+            approve_chat(config, "chat-a", "Attachments")
+            cases = [
+                ("IMAGE", {"type": "img"}, "photo.jpg", "image"),
+                ("VOICE", {"type": "audio", "isVoiceNote": True}, "memo.ogg", "voice message"),
+                ("AUDIO", {"type": "audio"}, "song.mp3", "audio"),
+                ("VIDEO", {"type": "video"}, "clip.mp4", "video"),
+                ("FILE", {"type": "file"}, "invoice.pdf", "document"),
+                ("DOCUMENT", {"type": "document"}, "notes.docx", "document"),
+                ("STICKER", {"type": "img", "isSticker": True}, "sticker.webp", "sticker"),
+                ("GIF", {"type": "img", "isGif": True}, "dance.gif", "gif"),
+                ("OTHER", {"type": "archive"}, "bundle.zip", "attachment"),
+            ]
+            messages = []
+            for idx, (message_type, attachment, filename, _) in enumerate(cases, 1):
+                messages.append({
+                    "id": f"msg-{idx}",
+                    "sortKey": str(idx),
+                    "timestamp": f"2026-07-{idx:02d}T12:00:00Z",
+                    "senderID": "u1",
+                    "senderName": "Julie",
+                    "type": message_type,
+                    "attachments": [{**attachment, "fileName": filename}],
+                })
+            sync_chats(config, FakeBeeperClient({"chat-a": {"title": "Attachments"}}, {"chat-a": messages}))
+
+            with open_db(config.archive.path) as conn:
+                stored = dict(conn.execute("SELECT message_id, text FROM messages"))
+                searchable = dict(conn.execute("SELECT message_id, text FROM message_fts"))
+            for idx, (_, _, filename, label) in enumerate(cases, 1):
+                expected = f"[{label}: {filename}]"
+                self.assertIn(expected, stored[f"msg-{idx}"])
+                self.assertIn(filename, searchable[f"msg-{idx}"])
+
     def test_sync_chat_skips_unapproved_and_unknown_chats(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = load_config(self._write_config(tmpdir, []))
