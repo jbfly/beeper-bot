@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from .config import AppConfig, ConfigError
 from .db import init_db_path, open_db, utc_now
 from .retrieval import search_archive
-from .sync import find_possible_duplicate, normalize_text, normalized_evidence_fingerprint
+from .sync import BACKFILL_DONE_KEY_PREFIX, find_possible_duplicate, normalize_text, normalized_evidence_fingerprint
 
 MAX_INPUT_BYTES = 32 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024
@@ -68,6 +68,42 @@ def revoke_chat(config: AppConfig, chat_id: str) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
+
+
+def forget_chat(config: AppConfig, chat_id: str, *, confirmed: bool = False) -> dict[str, object]:
+    chat_id = chat_id.strip()
+    if not chat_id:
+        raise ConfigError("chat_id must not be empty")
+    init_db_path(config.archive.path)
+    now = utc_now()
+    with open_db(config.archive.path) as conn:
+        if confirmed:
+            conn.execute("BEGIN IMMEDIATE")
+        try:
+            chat = conn.execute("SELECT name FROM chats WHERE chat_id = ?", (chat_id,)).fetchone()
+            name = str(chat["name"]) if chat else chat_id
+            message_count = int(conn.execute("SELECT COUNT(*) FROM messages WHERE chat_id = ?", (chat_id,)).fetchone()[0])
+            if not confirmed:
+                return {"chat_id": chat_id, "name": name, "message_count": message_count, "deleted": False}
+
+            conn.execute(
+                """
+                INSERT INTO chats(chat_id, name, is_allowed, approval_source, revoked_at, created_at, updated_at)
+                VALUES (?, ?, 0, '', ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    is_allowed = 0, revoked_at = excluded.revoked_at,
+                    updated_at = excluded.updated_at, last_synced_at = NULL
+                """,
+                (chat_id, name, now, now, now),
+            )
+            for table in ("attachment_derived_text", "message_fts", "control_turns", "messages", "sync_state", "person_chats"):
+                conn.execute(f"DELETE FROM {table} WHERE chat_id = ?", (chat_id,))
+            conn.execute("DELETE FROM runtime_state WHERE key = ?", (f"{BACKFILL_DONE_KEY_PREFIX}{chat_id}",))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+    return {"chat_id": chat_id, "name": name, "message_count": message_count, "deleted": True}
 
 
 def list_chats(config: AppConfig) -> list[dict[str, object]]:
