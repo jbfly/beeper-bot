@@ -85,8 +85,9 @@ def _load_credentials(config: BeeperConfig) -> dict:
 class MatrixTransport:
     """Synchronous facade over a persistent matrix-nio client."""
 
-    def __init__(self, config: BeeperConfig):
+    def __init__(self, config: BeeperConfig, allow_send: bool = False):
         self.config = config
+        self.allow_send = allow_send
         self._creds = _load_credentials(config)
         self._store = Path(config.matrix_store_path or DEFAULT_STORE)
         self._store.mkdir(parents=True, exist_ok=True)
@@ -346,6 +347,8 @@ class MatrixTransport:
         return self.fetch_messages_page(chat_id).items
 
     def send_message(self, chat_id: str, text: str) -> None:
+        if not self.allow_send:
+            raise PermissionError("sending disabled: set security.allow_send = true to enable")
         self._submit(self._a_send_message(chat_id, text))
 
 

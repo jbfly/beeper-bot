@@ -140,6 +140,7 @@ class MusicConfig:
 class SecurityConfig:
     allow_web_search: bool = False
     log_raw_messages: bool = False
+    allow_send: bool = False
 
 
 @dataclass(slots=True)
@@ -369,6 +370,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         security=SecurityConfig(
             allow_web_search=_bool_value(security_raw, "allow_web_search", False),
             log_raw_messages=_bool_value(security_raw, "log_raw_messages", False),
+            allow_send=_bool_value(security_raw, "allow_send", False),
         ),
     )
 

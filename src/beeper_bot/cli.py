@@ -247,7 +247,7 @@ def cmd_sync(config_path: Path, chat_ids: list[str] | None, as_json: bool) -> in
     if not target_chat_ids:
         raise ConfigError("No indexed chats configured and no --chat-id values supplied")
 
-    client = make_message_client(config.beeper)
+    client = make_message_client(config.beeper, allow_send=config.security.allow_send)
     result = sync_chats(config, client, target_chat_ids)
     payload = {
         "ok": True,
@@ -425,7 +425,7 @@ def cmd_list_chats(config_path: Path, as_json: bool) -> int:
 
 def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int:
     config = load_config(config_path)
-    client = make_message_client(config.beeper)
+    client = make_message_client(config.beeper, allow_send=config.security.allow_send)
     all_chats = client.fetch_all_chats()
 
     if query_filter:
