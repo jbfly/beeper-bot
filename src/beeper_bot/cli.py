@@ -94,6 +94,14 @@ def build_parser() -> argparse.ArgumentParser:
     access_revoke.add_argument("chat_id")
     access_revoke.add_argument("--json", action="store_true", help="Print machine-readable output")
 
+    approve = subparsers.add_parser("approve", help="Allow one local chat to be archived and searched")
+    approve.add_argument("chat_id")
+    approve.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    revoke = subparsers.add_parser("revoke", help="Stop archiving and searching one local chat")
+    revoke.add_argument("chat_id")
+    revoke.add_argument("--json", action="store_true", help="Print machine-readable output")
+
     wa_import = subparsers.add_parser("import-whatsapp", help="Import an approved WhatsApp ZIP or TXT export")
     wa_import.add_argument("path", type=Path)
     wa_import.add_argument("--chat-id", required=True, help="Stable authorization identity for this chat")
@@ -120,6 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     chats = subparsers.add_parser("chats", help="List available Beeper chats")
     chats.add_argument("--json", action="store_true", help="Print machine-readable output")
     chats.add_argument("--query", help="Filter by title or participant name")
+    chats.add_argument("--local", action="store_true", help="List local archive approval state without contacting Beeper")
 
     restore = subparsers.add_parser(
         "matrix-restore-keys",
@@ -423,6 +432,37 @@ def cmd_list_chats(config_path: Path, as_json: bool) -> int:
     return 0
 
 
+def cmd_approve(config_path: Path, chat_id: str, as_json: bool, name: str = "") -> int:
+    config = load_config(config_path)
+    known = next((chat for chat in list_chats(config) if chat["chat_id"] == chat_id.strip()), None)
+    payload = approve_chat(config, chat_id, name or (str(known["name"]) if known else chat_id))
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"Now archiving: {payload['name']}")
+    return 0
+
+
+def cmd_revoke(config_path: Path, chat_id: str, as_json: bool) -> int:
+    config = load_config(config_path)
+    known = next((chat for chat in list_chats(config) if chat["chat_id"] == chat_id.strip()), None)
+    revoked = revoke_chat(config, chat_id)
+    payload = {
+        "chat_id": chat_id.strip(),
+        "name": str(known["name"]) if known else chat_id.strip(),
+        "revoked": revoked,
+        "stored_messages_deleted": False,
+        "deletion_supported": False,
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    elif revoked:
+        print(f"Stopped archiving: {payload['name']}. Already-stored messages are still on disk; no deletion command exists.")
+    else:
+        print(f"No local chat found: {payload['chat_id']}", file=sys.stderr)
+    return 0 if revoked else 1
+
+
 def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int:
     config = load_config(config_path)
     client = make_message_client(config.beeper)
@@ -603,15 +643,17 @@ def main(argv: list[str] | None = None) -> int:
                 args.planner_temperature,
             )
         if args.command == "chat-access":
-            config = load_config(config_path)
             if args.access_command == "list":
-                payload = {"chats": list_approved_chats(config)}
-            elif args.access_command == "approve":
-                payload = approve_chat(config, args.chat_id, args.name or args.chat_id)
-            else:
-                payload = {"chat_id": args.chat_id, "revoked": revoke_chat(config, args.chat_id)}
-            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
-            return 0
+                payload = {"chats": list_approved_chats(load_config(config_path))}
+                print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+                return 0
+            if args.access_command == "approve":
+                return cmd_approve(config_path, args.chat_id, args.json, args.name)
+            return cmd_revoke(config_path, args.chat_id, args.json)
+        if args.command == "approve":
+            return cmd_approve(config_path, args.chat_id, args.json)
+        if args.command == "revoke":
+            return cmd_revoke(config_path, args.chat_id, args.json)
         if args.command == "import-whatsapp":
             payload = import_whatsapp(load_config(config_path), args.path, args.chat_id, args.name, args.date_order)
             print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
@@ -631,6 +673,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "list-chats":
             return cmd_list_chats(config_path, args.json)
         if args.command == "chats":
+            if args.local:
+                return cmd_list_chats(config_path, args.json)
             return cmd_chats(config_path, args.query, args.json)
         if args.command == "matrix-restore-keys":
             return cmd_matrix_restore_keys(config_path, args.recovery_key_file, args.json)
