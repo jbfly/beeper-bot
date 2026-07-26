@@ -101,9 +101,13 @@ def forget_chat(config: AppConfig, chat_id: str, *, confirmed: bool = False) -> 
             conn.execute("DELETE FROM trace_events")
             conn.execute("DELETE FROM traces")
             conn.execute("DELETE FROM memory_updates")
-            for table in ("attachment_derived_text", "message_fts", "control_turns", "messages", "sync_state", "person_chats"):
+            conn.execute("DELETE FROM control_turns")
+            for table in ("attachment_derived_text", "message_fts", "messages", "sync_state", "person_chats"):
                 conn.execute(f"DELETE FROM {table} WHERE chat_id = ?", (chat_id,))
-            conn.execute("DELETE FROM runtime_state WHERE key = ?", (f"{BACKFILL_DONE_KEY_PREFIX}{chat_id}",))
+            conn.execute(
+                "DELETE FROM runtime_state WHERE key IN (?, 'control_summary')",
+                (f"{BACKFILL_DONE_KEY_PREFIX}{chat_id}",),
+            )
             conn.commit()
         except Exception:
             conn.rollback()

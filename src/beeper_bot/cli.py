@@ -475,9 +475,10 @@ def cmd_forget(config_path: Path, chat_id: str, confirmed: bool) -> int:
         return 2
     quoted_facts = int(result["quoted_fact_count"])
     print(
-        f"Deleted {count:,} messages from {result['name']} and that chat's search index entries, attachment text, "
-        f"and control-chat transcript. Also cleared all chat diagnostic traces and memory update proposals. "
-        f"Saved facts that may still quote this chat: {quoted_facts:,}. Queued operator notifications were not deleted."
+        f"Deleted {count:,} messages from {result['name']}, plus that chat's search index entries and attachment text. "
+        f"For every chat—not just {result['name']}—cleared the entire operator/bot conversation history and its summary, "
+        f"all diagnostic traces, and every memory proposal, including all pending ones. Saved facts were kept; "
+        f"{quoted_facts:,} may quote any archived chat. Queued operator notifications were kept."
     )
     return 0
 
