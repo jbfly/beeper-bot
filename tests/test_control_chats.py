@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from beeper_bot.beeper_api import MessagePage
 from beeper_bot.bridge import ControlBridge
@@ -205,6 +206,31 @@ class OutboundQueueTest(unittest.TestCase):
             client.sent_messages.clear()
             bridge.process_once()
             self.assertEqual(client.sent_messages, [])
+
+    def test_permission_denial_drops_outbound_and_logs_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_config(_write_config(tmp))
+            client = FakeBeeperClient({"main-chat": []})
+            client.send_message = Mock(side_effect=PermissionError("sending disabled"))
+            bridge = ControlBridge(config, api_client=client)
+            from beeper_bot.db import init_db_path
+            init_db_path(config.archive.path)
+            with open_db(config.archive.path) as conn:
+                enqueue_outbound(conn, "main", "blocked notification")
+
+            with patch("beeper_bot.bridge.log") as bridge_log:
+                bridge._drain_outbound()
+                bridge._drain_outbound()
+
+            with open_db(config.archive.path) as conn:
+                self.assertEqual(len(conn.execute(
+                    "SELECT id FROM outbound_queue WHERE sent_at IS NULL"
+                ).fetchall()), 0)
+            bridge_log.assert_called_once_with(
+                "outbound permanently failed id=1 target=main: "
+                "sending is disabled by [security] allow_send",
+                level="error",
+            )
 
     def test_notify_to_named_chat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -39,8 +40,8 @@ from .sync import sync_chats
 from .tracing import finish_trace, trace_context, trace_event
 
 
-def log(message: str) -> None:
-    print(f"[{utc_now()}] {message}", flush=True)
+def log(message: str, *, level: str = "info") -> None:
+    print(f"[{utc_now()}] {message}", file=sys.stderr if level == "error" else sys.stdout, flush=True)
 
 
 CONTROL_CURSOR_KEY = "control_chat_last_seen_sort_key"
@@ -666,6 +667,15 @@ class ControlBridge:
             try:
                 for part in split_message(str(row["text"]), self.config.bridge.max_reply_chars, self.config.bridge.max_reply_parts):
                     self.api_client.send_message(chat_id, part)
+            except PermissionError:
+                with open_db(self.config.archive.path) as conn:
+                    mark_outbound_sent(conn, row["id"])
+                log(
+                    f"outbound permanently failed id={row['id']} target={target}: "
+                    "sending is disabled by [security] allow_send",
+                    level="error",
+                )
+                continue
             except Exception as exc:
                 log(f"outbound deliver failed id={row['id']} target={target}: {exc}")
                 continue  # leave queued; retry next cycle

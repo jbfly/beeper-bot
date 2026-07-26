@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from beeper_bot.beeper_api import BeeperApiClient, make_message_client
 from beeper_bot.config import BeeperConfig, load_config
 from beeper_bot.db import init_db_path, open_db
-from beeper_bot.matrix_transport import MatrixTransport
+from beeper_bot.matrix_transport import MatrixTransport, create_chat
 
 
 def _write_config(body: str) -> Path:
@@ -65,12 +66,52 @@ class ReadOnlyTransportTest(unittest.TestCase):
             client.send_message("chat", "hello")
         self._assert_outbound_empty(config)
 
+    def test_create_chat_is_denied_by_default_without_http_call(self) -> None:
+        config = load_config(_write_config(""))
+        with patch("beeper_bot.matrix_transport.urllib.request.urlopen") as urlopen:
+            with self.assertRaisesRegex(PermissionError, "sending disabled"):
+                create_chat(config.beeper, "control")
+        urlopen.assert_not_called()
+
     def test_explicit_allow_send_enables_desktop_send(self) -> None:
         config = load_config(_write_config("[security]\nallow_send = true\n"))
         client = make_message_client(config.beeper, allow_send=config.security.allow_send)
         client._request = Mock()
         client.send_message("chat", "hello")
         client._request.assert_called_once_with("POST", "/chats/chat/messages", {"text": "hello"})
+
+
+class ReadOnlySyncLoopTest(unittest.IsolatedAsyncioTestCase):
+    async def test_sync_loop_recovers_after_exception(self) -> None:
+        response = object()
+        ingested = asyncio.Event()
+
+        class Client:
+            calls = 0
+
+            async def sync(self, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    raise OSError("temporary failure")
+                if self.calls == 2:
+                    return response
+                await asyncio.Event().wait()
+
+        transport = MatrixTransport.__new__(MatrixTransport)
+        transport._client = Client()
+        transport._ingest_sync = Mock(side_effect=lambda value: ingested.set())
+
+        with self.assertLogs("beeper_bot.matrix_transport", level="ERROR") as logs:
+            with patch("beeper_bot.matrix_transport.asyncio.sleep", new=AsyncMock()) as sleep:
+                task = asyncio.create_task(transport._a_readonly_sync_forever())
+                await asyncio.wait_for(ingested.wait(), timeout=1)
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+
+        self.assertEqual(len(logs.records), 1)
+        sleep.assert_awaited_once_with(5)
+        transport._ingest_sync.assert_called_once_with(response)
 
 
 if __name__ == "__main__":
