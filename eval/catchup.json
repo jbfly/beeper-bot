@@ -1,0 +1,22 @@
+{
+  "name": "catchup",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
+  "cases": [
+    {
+      "id": "neighborhood_catchup",
+      "question": "Catch me up on the Neighborhood chat.",
+      "tags": [
+        "synthetic",
+        "catchup"
+      ],
+      "catchup_chat_query": "Neighborhood Planning",
+      "answer_contains_any": [
+        "digest",
+        "summary",
+        "planning"
+      ],
+      "min_evidence": 0,
+      "require_citation": false
+    }
+  ]
+}

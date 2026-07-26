@@ -5,11 +5,23 @@ import json
 import sys
 from pathlib import Path
 
-from .beeper_api import BeeperApiClient, BeeperApiError
+from .beeper_api import BeeperApiClient, BeeperApiError, make_message_client
 from .bridge import ControlBridge
 from .config import DEFAULT_CONFIG_PATH, ConfigError, load_config
-from .db import SCHEMA_VERSION, collect_runtime_status, init_db_path
+from .console import serve_console
+from .db import SCHEMA_VERSION, collect_runtime_status, enqueue_outbound, init_db_path, open_db
+from .evals import (
+    DEFAULT_EVAL_SUITE_PATH,
+    configure_eval_run,
+    format_suite_result,
+    load_eval_suite,
+    run_eval_suite,
+    suite_result_to_dict,
+)
 from .llm import LlmError, ask_archive, format_ask_response
+from .offline_archive import approve_chat, import_whatsapp, list_approved_chats, list_chats, revoke_chat, scoped_search, surrounding_thread
+from .people import (load_person_graph, seed_person, add_person_alias, add_person_chat,
+                    delete_person, delete_person as remove_person)
 from .retrieval import format_find_response, search_archive
 from .sync import sync_chats
 
@@ -47,6 +59,115 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--once", action="store_true", help="Run one poll pass and exit")
     serve.add_argument("--json", action="store_true", help="Print machine-readable output for --once")
 
+    notify = subparsers.add_parser(
+        "notify",
+        help="Queue a message for the running serve loop to post to a control chat",
+    )
+    notify.add_argument("text", nargs="+", help="Message text (also read from stdin if '-')")
+    notify.add_argument("--chat", default="main", help="Target control chat name (default: main) or raw chat id")
+    notify.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    media = subparsers.add_parser("index-media", help="Transcribe voice memos / describe images into the archive")
+    media.add_argument("--kind", choices=["voice", "image"], default="voice", help="Attachment kind to process (default: voice)")
+    media.add_argument("--limit", type=int, default=10, help="Maximum attachments to process this run (default: 10)")
+    media.add_argument("--chat", default="", help="Only process attachments from chats whose title matches this")
+
+    catchup = subparsers.add_parser("catchup", help="Summarize a chat since the last catch-up")
+    catchup.add_argument("chat", nargs="+", help="Chat title or part of it")
+    catchup.add_argument("--since-sort-key", type=int, default=None, help="Override the stored cursor for this run")
+    catchup.add_argument("--no-cursor-update", action="store_true", help="Do not advance the stored cursor")
+
+    console = subparsers.add_parser("console", help="Run the local operator console")
+    console.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    console.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
+    console.add_argument("--sample-seconds", type=int, default=2, help="Telemetry sample interval in seconds")
+
+    access = subparsers.add_parser("chat-access", help="Manage stable chat approval metadata")
+    access_sub = access.add_subparsers(dest="access_command", required=True)
+    access_list = access_sub.add_parser("list", help="List approved chats")
+    access_list.add_argument("--json", action="store_true", help="Print machine-readable output")
+    access_approve = access_sub.add_parser("approve", help="Approve one stable chat ID")
+    access_approve.add_argument("chat_id")
+    access_approve.add_argument("--name", default="", help="Display name only; never used for authorization")
+    access_approve.add_argument("--json", action="store_true", help="Print machine-readable output")
+    access_revoke = access_sub.add_parser("revoke", help="Revoke one stable chat ID immediately")
+    access_revoke.add_argument("chat_id")
+    access_revoke.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    wa_import = subparsers.add_parser("import-whatsapp", help="Import an approved WhatsApp ZIP or TXT export")
+    wa_import.add_argument("path", type=Path)
+    wa_import.add_argument("--chat-id", required=True, help="Stable authorization identity for this chat")
+    wa_import.add_argument("--name", default=None, help="Display name only")
+    wa_import.add_argument("--date-order", choices=["auto", "day-first", "month-first"], default="auto",
+                           help="WhatsApp numeric date order; auto refuses fully ambiguous exports")
+    wa_import.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    archive_search = subparsers.add_parser("archive-search", help="Search one approved chat")
+    archive_search.add_argument("chat_id")
+    archive_search.add_argument("query", nargs="+")
+    archive_search.add_argument("--limit", type=int, default=20)
+    archive_search.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    archive_thread = subparsers.add_parser("archive-thread", help="Read surrounding messages in one approved chat")
+    archive_thread.add_argument("chat_id")
+    archive_thread.add_argument("message_id")
+    archive_thread.add_argument("--radius", type=int, default=3)
+    archive_thread.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    list_chats_parser = subparsers.add_parser("list-chats", help="Show which local chats are shared with the archive")
+    list_chats_parser.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    chats = subparsers.add_parser("chats", help="List available Beeper chats")
+    chats.add_argument("--json", action="store_true", help="Print machine-readable output")
+    chats.add_argument("--query", help="Filter by title or participant name")
+
+    restore = subparsers.add_parser(
+        "matrix-restore-keys",
+        help="Restore the megolm key backup into the matrix-nio store (one-shot; transport=matrix)",
+    )
+    restore.add_argument("--json", action="store_true", help="Print machine-readable output")
+    restore.add_argument(
+        "--recovery-key-file",
+        help="File containing the Beeper recovery key (else read env BEEPER_RECOVERY_KEY)",
+    )
+
+    create_chat = subparsers.add_parser(
+        "matrix-create-chat",
+        help="Create a Matrix room to use as a purpose-scoped control chat (transport=matrix)",
+    )
+    create_chat.add_argument("name", help="Display name for the new chat, e.g. 'beeper-bot · music'")
+    create_chat.add_argument("--topic", default="", help="Optional room topic")
+    create_chat.add_argument("--no-encrypted", action="store_true", help="Create an unencrypted room (default: encrypted)")
+    create_chat.add_argument("--json", action="store_true", help="Print machine-readable output")
+
+    eval_parser = subparsers.add_parser("eval", help="Run a local benchmark suite")
+    eval_parser.add_argument("--suite", default=str(DEFAULT_EVAL_SUITE_PATH), help=f"Path to eval suite JSON (default: {DEFAULT_EVAL_SUITE_PATH})")
+    eval_parser.add_argument("--json", action="store_true", help="Print machine-readable output")
+    eval_parser.add_argument("--output", help="Write JSON results to this path")
+    eval_parser.add_argument("--case", action="append", dest="case_ids", help="Run one case id; repeatable")
+    eval_parser.add_argument("--tag", action="append", dest="tags", help="Run only cases with this tag; repeatable")
+    eval_parser.add_argument("--deterministic", action="store_true", help="Force deterministic eval sampling defaults")
+    eval_parser.add_argument("--temperature", type=float, help="Override answer temperature for this eval run")
+    eval_parser.add_argument("--planner-temperature", type=float, help="Override planner temperature for this eval run")
+
+    people = subparsers.add_parser("people", help="Manage the person graph")
+    people_sub = people.add_subparsers(dest="people_command", required=True)
+    people_list = people_sub.add_parser("list", help="List all known people")
+    people_list.add_argument("--json", action="store_true", help="Print machine-readable output")
+    people_seed = people_sub.add_parser("seed", help="Create or replace a person entry")
+    people_seed.add_argument("person_id", help="Stable identifier, e.g. jordan-lee")
+    people_seed.add_argument("canonical_name", help="Full display name")
+    people_seed.add_argument("--alias", action="append", dest="aliases", help="Name alias; repeatable")
+    people_seed.add_argument("--chat-id", action="append", dest="chat_ids", help="Associated chat ID; repeatable")
+    people_alias = people_sub.add_parser("alias", help="Add an alias to an existing person")
+    people_alias.add_argument("person_id", help="Person identifier")
+    people_alias.add_argument("alias", help="Alias to add")
+    people_link = people_sub.add_parser("link", help="Link a chat to a person")
+    people_link.add_argument("person_id", help="Person identifier")
+    people_link.add_argument("chat_id", help="Chat ID to associate")
+    people_del = people_sub.add_parser("delete", help="Remove a person")
+    people_del.add_argument("person_id", help="Person identifier to remove")
+
     return parser
 
 
@@ -70,6 +191,7 @@ def _status_payload(config_path: Path):
             "fts_count": status.database.fts_count,
             "sync_state_count": status.database.sync_state_count,
             "runtime_state_count": status.database.runtime_state_count,
+            "people_count": status.database.people_count,
         },
     }
 
@@ -115,6 +237,7 @@ def cmd_status(config_path: Path, as_json: bool) -> int:
     print(f"FTS rows: {payload['database']['fts_count']}")
     print(f"Sync state rows: {payload['database']['sync_state_count']}")
     print(f"Runtime state rows: {payload['database']['runtime_state_count']}")
+    print(f"People: {payload['database']['people_count']}")
     return 0
 
 
@@ -124,7 +247,7 @@ def cmd_sync(config_path: Path, chat_ids: list[str] | None, as_json: bool) -> in
     if not target_chat_ids:
         raise ConfigError("No indexed chats configured and no --chat-id values supplied")
 
-    client = BeeperApiClient(config.beeper)
+    client = make_message_client(config.beeper)
     result = sync_chats(config, client, target_chat_ids)
     payload = {
         "ok": True,
@@ -211,6 +334,39 @@ def cmd_ask(config_path: Path, question_parts: list[str], limit: int | None, as_
     return 0
 
 
+def cmd_eval(
+    config_path: Path,
+    suite_path: Path,
+    case_ids: list[str] | None,
+    tags: list[str] | None,
+    as_json: bool,
+    output_path: Path | None,
+    deterministic: bool,
+    temperature: float | None,
+    planner_temperature: float | None,
+) -> int:
+    config = load_config(config_path)
+    config = configure_eval_run(
+        config,
+        deterministic=deterministic,
+        temperature=temperature,
+        planner_temperature=planner_temperature,
+    )
+    suite = load_eval_suite(suite_path)
+    result = run_eval_suite(config, suite, case_ids=case_ids, tags=tags)
+    payload = suite_result_to_dict(result)
+
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(format_suite_result(result))
+    return 0
+
+
 def cmd_serve(config_path: Path, once: bool, as_json: bool) -> int:
     config = load_config(config_path)
     bridge = ControlBridge(config)
@@ -235,6 +391,153 @@ def cmd_serve(config_path: Path, once: bool, as_json: bool) -> int:
     return 0
 
 
+def cmd_notify(config_path: Path, text_parts: list[str], chat: str, as_json: bool) -> int:
+    config = load_config(config_path)
+    text = " ".join(text_parts)
+    if text.strip() == "-":
+        text = sys.stdin.read()
+    text = text.rstrip("\n")
+    if not text.strip():
+        raise ConfigError("notify: empty message")
+    init_db_path(config.archive.path)
+    with open_db(config.archive.path) as conn:
+        row_id = enqueue_outbound(conn, chat, text)
+    if as_json:
+        print(json.dumps({"ok": True, "id": row_id, "target": chat}, sort_keys=True))
+    else:
+        print(f"Queued notification #{row_id} for control chat '{chat}'.")
+    return 0
+
+
+def cmd_list_chats(config_path: Path, as_json: bool) -> int:
+    chats = list_chats(load_config(config_path))
+    if as_json:
+        print(json.dumps({"chats": chats}, indent=2, sort_keys=True))
+        return 0
+    if not chats:
+        print("No chats are known to the local archive.")
+        return 0
+    print("Allowed  Name  Chat ID")
+    for chat in chats:
+        print(f"{'yes' if chat['allowed'] else 'no':7}  {chat['name']}  {chat['chat_id']}")
+    return 0
+
+
+def cmd_chats(config_path: Path, query_filter: str | None, as_json: bool) -> int:
+    config = load_config(config_path)
+    client = make_message_client(config.beeper)
+    all_chats = client.fetch_all_chats()
+
+    if query_filter:
+        lowered = query_filter.lower()
+        all_chats = [
+            item for item in all_chats
+            if lowered in str(item.get('title', '')).lower()
+            or lowered in str(item.get('network', '')).lower()
+        ]
+
+    if as_json:
+        print(json.dumps(all_chats, indent=2, sort_keys=True, default=str))
+        return 0
+
+    for item in all_chats:
+        title = str(item.get('title') or '(no title)')
+        print(f'{item.get("id")}  "{title}"  {item.get("network","")}  {item.get("type","")}')
+    print(f'\n{len(all_chats)} chats total')
+    return 0
+
+
+def cmd_matrix_restore_keys(config_path: Path, recovery_key_file: str | None, as_json: bool) -> int:
+    import os
+
+    from .matrix_transport import restore_key_backup
+
+    config = load_config(config_path)
+    recovery_key = os.environ.get("BEEPER_RECOVERY_KEY", "")
+    if recovery_key_file:
+        recovery_key = Path(recovery_key_file).expanduser().read_text().strip()
+    if not recovery_key:
+        print(
+            "No recovery key provided. Set BEEPER_RECOVERY_KEY or pass "
+            "--recovery-key-file <path>.",
+            file=sys.stderr,
+        )
+        return 2
+    stats = restore_key_backup(config.beeper, recovery_key)
+    if as_json:
+        print(json.dumps(stats, sort_keys=True))
+    else:
+        print(
+            f"Restored megolm backup: wrote {stats['imported']} of {stats['total']} "
+            f"sessions to the store ({stats['failed']} failed). Idempotent — safe to re-run."
+        )
+    return 0
+
+
+def cmd_matrix_create_chat(config_path: Path, name: str, topic: str, encrypted: bool, as_json: bool) -> int:
+    from .matrix_transport import create_chat
+
+    config = load_config(config_path)
+    result = create_chat(config.beeper, name, topic=topic, encrypted=encrypted)
+    if as_json:
+        print(json.dumps(result, sort_keys=True))
+    else:
+        print(f"Created chat '{result['name']}' -> {result['room_id']} (encrypted={result['encrypted']}).")
+        print("Add it to config under a [control_chats.<name>] section and restart serve:")
+        print("")
+        print("  [control_chats.<name>]")
+        print(f"  chat_id = \"{result['room_id']}\"")
+        print("")
+        print("It should appear as a chat in your Beeper apps shortly.")
+    return 0
+
+
+def cmd_people(config_path: Path, args: argparse.Namespace) -> int:
+    config = load_config(config_path)
+    sub = args.people_command
+    if sub == "list":
+        graph = load_person_graph(config)
+        if args.json:
+            payload = {
+                "people": [
+                    {
+                        "person_id": p.person_id,
+                        "canonical_name": p.canonical_name,
+                        "aliases": p.aliases,
+                        "chat_ids": p.chat_ids,
+                    }
+                    for p in graph.people
+                ]
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            for p in graph.people:
+                print(f"{p.person_id}: {p.canonical_name}")
+                if p.aliases:
+                    print(f"  aliases: {', '.join(p.aliases)}")
+                if p.chat_ids:
+                    for chat_id in p.chat_ids:
+                        print(f"  chat: {chat_id}")
+        return 0
+    if sub == "seed":
+        seed_person(config, args.person_id, args.canonical_name, args.aliases or [], args.chat_ids or [])
+        print(f"Seeded person: {args.person_id} -> {args.canonical_name}")
+        return 0
+    if sub == "alias":
+        add_person_alias(config, args.person_id, args.alias)
+        print(f"Added alias '{args.alias}' to {args.person_id}")
+        return 0
+    if sub == "link":
+        add_person_chat(config, args.person_id, args.chat_id)
+        print(f"Linked chat {args.chat_id} to {args.person_id}")
+        return 0
+    if sub == "delete":
+        delete_person(config, args.person_id)
+        print(f"Deleted person: {args.person_id}")
+        return 0
+    raise ConfigError(f"Unknown people subcommand: {sub}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -253,6 +556,86 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_ask(config_path, args.question, args.limit, args.json)
         if args.command == "serve":
             return cmd_serve(config_path, args.once, args.json)
+        if args.command == "notify":
+            return cmd_notify(config_path, args.text, args.chat, args.json)
+        if args.command == "index-media":
+            from .media import run_derivation_pass
+
+            config = load_config(config_path)
+            kind = "voice-memo" if args.kind == "voice" else "image"
+            results = run_derivation_pass(config, kind, limit=args.limit, chat_query=args.chat)
+            if not results:
+                print("No pending attachments to process.")
+                return 0
+            for item in results:
+                preview = item.derived_text[:100].replace("\n", " ")
+                detail = f" ({item.chunk_count} chunks, {item.duration_seconds:.0f}s)" if item.duration_seconds else ""
+                print(f"{item.status}: {item.message_id}{detail} {preview or item.error_text}")
+            done = sum(1 for item in results if item.status == "done")
+            print(f"Processed {len(results)} attachment(s), {done} derived.")
+            return 0
+        if args.command == "catchup":
+            from .catchup import catchup_summary, format_catchup_result
+
+            config = load_config(config_path)
+            result = catchup_summary(
+                config,
+                " ".join(args.chat),
+                since_sort_key=args.since_sort_key,
+                update_cursor=not args.no_cursor_update,
+            )
+            print(format_catchup_result(result))
+            return 0
+        if args.command == "console":
+            config = load_config(config_path)
+            serve_console(config, host=args.host, port=args.port, sample_seconds=args.sample_seconds)
+            return 0
+        if args.command == "eval":
+            return cmd_eval(
+                config_path,
+                Path(args.suite).expanduser(),
+                args.case_ids,
+                args.tags,
+                args.json,
+                Path(args.output).expanduser() if args.output else None,
+                args.deterministic,
+                args.temperature,
+                args.planner_temperature,
+            )
+        if args.command == "chat-access":
+            config = load_config(config_path)
+            if args.access_command == "list":
+                payload = {"chats": list_approved_chats(config)}
+            elif args.access_command == "approve":
+                payload = approve_chat(config, args.chat_id, args.name or args.chat_id)
+            else:
+                payload = {"chat_id": args.chat_id, "revoked": revoke_chat(config, args.chat_id)}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+            return 0
+        if args.command == "import-whatsapp":
+            payload = import_whatsapp(load_config(config_path), args.path, args.chat_id, args.name, args.date_order)
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+            return 0
+        if args.command == "archive-search":
+            results = scoped_search(load_config(config_path), args.chat_id, " ".join(args.query), args.limit)
+            payload = {"chat_id": args.chat_id, "query": " ".join(args.query), "results": results}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+            return 0
+        if args.command == "archive-thread":
+            messages = surrounding_thread(load_config(config_path), args.chat_id, args.message_id, args.radius)
+            payload = {"chat_id": args.chat_id, "anchor_message_id": args.message_id, "messages": messages}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload)
+            return 0
+        if args.command == "people":
+            return cmd_people(config_path, args)
+        if args.command == "list-chats":
+            return cmd_list_chats(config_path, args.json)
+        if args.command == "chats":
+            return cmd_chats(config_path, args.query, args.json)
+        if args.command == "matrix-restore-keys":
+            return cmd_matrix_restore_keys(config_path, args.recovery_key_file, args.json)
+        if args.command == "matrix-create-chat":
+            return cmd_matrix_create_chat(config_path, args.name, args.topic, not args.no_encrypted, args.json)
     except ConfigError as exc:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2

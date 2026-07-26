@@ -8,8 +8,14 @@ version = "0.1.0"
 description = "Local-first Beeper memory and assistant bot"
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "jbfly" }]
+authors = [{ name = "beeper-bot contributors" }]
 dependencies = []
+
+# The matrix-nio transport (transport = "matrix") is optional. python-olm only
+# builds on Python 3.11/3.12 (not 3.13/3.14), so install this extra under a 3.12
+# venv:  uv pip install -e '.[matrix]'
+[project.optional-dependencies]
+matrix = ["matrix-nio[e2e]>=0.25", "pycryptodome>=3.20"]
 
 [project.scripts]
 beeper-bot = "beeper_bot.cli:main"

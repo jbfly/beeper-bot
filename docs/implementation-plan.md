@@ -15,6 +15,8 @@ This is the proof-of-concept target. It avoids split deployment work while the p
 
 The code must still keep clean boundaries between ingest, storage, retrieval, and inference. That makes later migration possible.
 
+The next design step is not more narrow benchmark tuning. It is bounded slice reasoning and control-chat memory under explicit prompt-budget pressure. The evaluation plan in `docs/control-chat-memory-and-eval-plan.md` is therefore part of the implementation contract, not a side note.
+
 ## 2. Deployment phases
 
 ### 2.1 MVP
@@ -38,6 +40,21 @@ Expected shape:
 
 Constraint:
 - as long as the Beeper Desktop local API is the source, the desktop stays the authority for ingest
+
+## 3. Runtime layout
+
+### 2.3 Later mixed-model runtime
+
+A later runtime may use more than one local model, but only sequentially.
+The present GPU budget does not support two resident 26B-class endpoints in a practical way.
+
+If mixed-model routing is added, the likely shape is:
+- one smaller long-context model for continuity, summary refresh, and memory-write routing
+- one stronger model for archive QA and harder slice reasoning
+- a local arbiter layer that can unload and load on demand
+
+Do not make this the first memory implementation.
+First build the memory substrate and the context-pressure harness. Then use the ladder results to decide whether the extra orchestration is justified.
 
 ## 3. Runtime layout
 
@@ -102,7 +119,7 @@ Example:
 ```toml
 [beeper]
 api_base = "http://127.0.0.1:23373/v1"
-credentials_file = "/home/jbfly/.codex/.credentials.json"
+token_file = "~/.config/beeper-bot/token"
 control_chat_id = "<beeper-chat-id>"
 indexed_chat_ids = ["<chat-a>", "<chat-b>"]
 poll_seconds = 5
@@ -111,10 +128,10 @@ history_fetch_limit = 500
 http_timeout_seconds = 30
 
 [archive]
-path = "/home/jbfly/.local/state/beeper-bot/archive.sqlite3"
+path = "~/.local/state/beeper-bot/archive.sqlite3"
 
 [llm]
-base_url = "http://127.0.0.1:8080/v1"
+base_url = "http://127.0.0.1:8090/v1"
 model = "gemma"
 timeout_seconds = 120
 max_input_snippets = 10
@@ -505,6 +522,23 @@ Do not block MVP on these items:
 - web search
 - split desktop/server deployment
 - Wake-on-LAN orchestration
+
+Track these next experiments after the current span-retrieval patch:
+- add deterministic eval mode for model comparisons and regression runs
+- add date-bounded and chat-bounded slice retrieval for day-specific questions
+- add last-meaningful-request logic for shopping and follow-up threads
+- benchmark one Qwen candidate that fits the 16 GB GPU well
+- refresh the local `llama.cpp` tree, rebuild, and rerun the model matrix
+
+Add a control-chat memory and facts layer after the current retrieval work stabilizes:
+- keep a bounded recent control-chat turn window for conversational continuity
+- maintain a rolling control-chat summary for older turns
+- store user-approved facts with provenance and timestamps
+- store people, aliases, and relationship facts as structured records
+- support safe memory updates from the control chat, with explicit confirmation where needed
+- include memory-aware evals that test long control-chat threads, fact carry-forward, and context-budget limits
+
+See `docs/control-chat-memory-and-eval-plan.md` for the work order, harness design, eval classes, and model-prescreen policy.
 
 ## 18. First coding step
 

@@ -1,0 +1,21 @@
+{
+  "name": "media",
+  "description": "Synthetic public-safe example suite. Replace with your own private local evals for real benchmarking.",
+  "cases": [
+    {
+      "id": "voice_memo_transcript_synthetic",
+      "question": "Transcribe the last voice memo from Sam.",
+      "tags": [
+        "synthetic",
+        "media"
+      ],
+      "expected_path": "direct",
+      "answer_contains_any": [
+        "voice memo",
+        "transcript"
+      ],
+      "min_evidence": 0,
+      "require_citation": false
+    }
+  ]
+}

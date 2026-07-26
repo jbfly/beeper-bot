@@ -10,3 +10,12 @@ state/
 logs/
 *.log
 .DS_Store
+*.egg-info/
+state-eval*.json
+eval/generated/*.json
+*.sqlite3
+*.sqlite3-*
+config.toml
+token
+.venv312/
+uv.lock
