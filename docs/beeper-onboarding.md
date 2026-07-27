@@ -88,6 +88,63 @@ A launchd job named `com.exceptionalspirits.beeper-sync` runs every 15 minutes o
 
 The wrapper reads the approved chat list from the database and passes those IDs to sync. This is required because bare `beeper-bot sync` does **not** read database approvals: it reads `indexed_chat_ids` from config, which is empty here, and exits with an error. Approving a new chat therefore needs no config change and no launchd job edit; the wrapper picks it up from the database on its next run.
 
+## Offline export drop folder (operator)
+
+The stdlib-only `scripts/whatsapp_export_dropbox.py` scanner wraps the existing
+`import-whatsapp` implementation; it does not parse exports itself, run `serve`,
+send messages, or contact the Beeper API. Its default private root is
+`~/WhatsApp Exports`. Each immediate chat folder contains an owner-only
+`chat.json` with exactly `chat_id` and `name`; the folder, never the export
+filename, selects the approved offline chat identity.
+
+Create a private manifest outside git from the synthetic template, set up the
+folders, and explicitly approve the same stable IDs:
+
+```sh
+cd ~/git/beeper-bot
+cp scripts/whatsapp-export-chats.example.tsv ~/.config/beeper-bot/whatsapp-export-chats.tsv
+chmod 600 ~/.config/beeper-bot/whatsapp-export-chats.tsv
+# Edit the private copy: folder<TAB>chat_id<TAB>name, one chat per line.
+PYTHONPATH="$PWD/src" .venv/bin/python scripts/whatsapp_export_dropbox.py setup \
+  ~/.config/beeper-bot/whatsapp-export-chats.tsv
+while IFS=$'\t' read -r folder chat_id name; do
+  beeper-bot --config ~/.config/beeper-bot/config.toml chat-access approve "$chat_id" --name "$name"
+done < <(tail -n +2 ~/.config/beeper-bot/whatsapp-export-chats.tsv)
+```
+
+Install and load the user launchd job. The generated plist runs the scanner
+every 60 seconds and writes only metadata-only summaries or sanitized errors
+to an owner-only log. An `fcntl` lock permits only one scanner process; the
+kernel releases it after crashes, so no stale lock cleanup is needed.
+
+```sh
+PYTHONPATH="$PWD/src" .venv/bin/python scripts/whatsapp_export_dropbox.py install-launchd
+launchctl bootout "gui/$(id -u)" ~/Library/LaunchAgents/com.exceptionalspirits.whatsapp-export-dropbox.plist 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.exceptionalspirits.whatsapp-export-dropbox.plist
+launchctl kickstart -k "gui/$(id -u)/com.exceptionalspirits.whatsapp-export-dropbox"
+```
+
+Place an owner-only `.zip` or `.txt` in the matching chat folder. Successful
+files move atomically within the root to `Processed/<folder>/<sha256>/`; failed
+files move to `Failed/<folder>/<sha256>/`. Each destination contains a `0600`
+JSON receipt with filename, SHA-256, chat ID/name, timestamp, and imported and
+duplicate counts (or only a sanitized exception class on failure), never
+message text. The scanner refuses symlinks, duplicate IDs, extra metadata
+keys/files, paths escaping the root, and any root/chat/source/metadata item
+with group or other permissions. Re-copying an already imported export is
+safe: the reviewed importer's message fingerprints keep the archive
+idempotent, and the receipt reports the rows as duplicates.
+
+Manual check, with no Beeper API contact:
+
+```sh
+PYTHONPATH="$PWD/src" .venv/bin/python scripts/whatsapp_export_dropbox.py scan
+find ~/WhatsApp\ Exports/Processed ~/WhatsApp\ Exports/Failed -name receipt.json -type f -print
+```
+
+Do not put the private manifest, exports, receipts, logs, database, chat names,
+or IDs in git or support messages.
+
 ## Known limit: history backfill
 
 WhatsApp gives a newly linked device only a small, unpredictable fragment of history. This was verified empirically on 2026-07-26 by manually paging Beeper's API beyond the bot's sync: `hasMore` kept returning true, but message timestamps never went earlier. Raising `history_backfill_pages` does not recover older history.
