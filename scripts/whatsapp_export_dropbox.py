@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import csv
+import errno
 import fcntl
 import hashlib
 import json
 import os
 import plistlib
+import shutil
 import stat
 import sys
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +24,8 @@ from beeper_bot.offline_archive import import_whatsapp
 
 METADATA = "chat.json"
 RESERVED = {"Processed", "Failed"}
+DEFAULT_MANIFEST_PATH = Path.home() / ".config" / "beeper-bot" / "whatsapp-export-chats.tsv"
+QUIET_SECONDS = 30
 
 
 def _private(path: Path, kind: str) -> None:
@@ -98,65 +103,110 @@ def _lock(path: Path):
         yield
 
 
-def scan(root: Path, config_path: Path) -> dict[str, int]:
+def _read_manifest(manifest: Path) -> dict[str, tuple[str, str]]:
+    manifest = manifest.expanduser()
+    _private(manifest, "manifest")
+    with manifest.open(newline="", encoding="utf-8-sig") as handle:
+        rows = csv.DictReader(handle, delimiter="\t")
+        if rows.fieldnames != ["folder", "chat_id", "name"]:
+            raise ValueError("manifest header must be: folder<TAB>chat_id<TAB>name")
+        raw_entries = list(rows)
+    entries: dict[str, tuple[str, str]] = {}
+    seen_ids: set[str] = set()
+    for row in raw_entries:
+        folder_name, chat_id, name = (row[key].strip() for key in ("folder", "chat_id", "name"))
+        if (not folder_name or folder_name in RESERVED or folder_name in {".", ".."} or "/" in folder_name
+                or "\0" in folder_name or not chat_id or not name):
+            raise ValueError("manifest contains an invalid value")
+        if chat_id in seen_ids or folder_name in entries:
+            raise ValueError("manifest contains a duplicate folder or chat_id")
+        seen_ids.add(chat_id)
+        entries[folder_name] = (chat_id, name)
+    return entries
+
+
+def _move(source: Path, destination: Path) -> None:
+    try:
+        os.replace(source, destination)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        shutil.move(source, destination)
+
+
+def scan(root: Path, config_path: Path, manifest: Path = DEFAULT_MANIFEST_PATH) -> dict[str, object]:
     root = root.expanduser()
     _private(root, "root")
     config = load_config(config_path.expanduser())
+    expected_folders = _read_manifest(manifest)
     lock_path = config.archive.path.parent / "whatsapp-export-dropbox.lock"
-    result = {"imported": 0, "duplicates": 0, "failed": 0, "files": 0}
+    folder_outcomes: dict[str, dict[str, object]] = {}
+    result: dict[str, object] = {"imported": 0, "duplicates": 0, "failed": 0, "files": 0,
+                                 "folders": folder_outcomes}
     with _lock(lock_path):
-        folders: list[tuple[Path, str, str]] = []
         ids: set[str] = set()
-        for entry in sorted(root.iterdir(), key=lambda item: item.name):
-            if entry.name in RESERVED:
-                _private(entry, "folder")
+        for folder in sorted(root.iterdir(), key=lambda item: item.name):
+            if folder.name in RESERVED:
+                _private(folder, "folder")
                 continue
-            _inside(entry, root)
-            _private(entry, "folder")
-            chat_id, name = _metadata(entry)
-            if chat_id in ids:
-                raise ValueError("duplicate chat_id in drop root")
-            ids.add(chat_id)
-            folders.append((entry, chat_id, name))
-
-        for folder, chat_id, name in folders:
-            sources: list[Path] = []
-            for entry in sorted(folder.iterdir(), key=lambda item: item.name):
-                _inside(entry, root)
-                if entry.name == METADATA:
-                    continue
-                if entry.is_symlink():
-                    raise ValueError("source must not be a symlink")
-                if entry.suffix.lower() not in {".zip", ".txt"}:
-                    raise ValueError("unexpected file in chat folder")
-                _private(entry, "source")
-                sources.append(entry)
-            for source in sources:
-                with source.open("rb") as handle:
-                    digest = hashlib.file_digest(handle, "sha256").hexdigest()
-                before = _message_count(config.archive.path, chat_id)
-                receipt: dict[str, object] = {
-                    "filename": source.name, "sha256": digest, "chat_id": chat_id,
-                    "chat_name": name, "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-                destination_kind = "Processed"
-                try:
-                    payload = import_whatsapp(config, source, chat_id, name, "day-first")
-                    after = _message_count(config.archive.path, chat_id)
-                    imported = max(0, after - before)
-                    duplicates = max(0, int(payload["message_count"]) - imported)
-                    receipt.update(imported_count=imported, duplicate_count=duplicates)
-                    result["imported"] += imported
-                    result["duplicates"] += duplicates
-                except Exception as exc:
-                    destination_kind = "Failed"
-                    receipt.update(imported_count=0, duplicate_count=0,
-                                   error=f"import failed ({type(exc).__name__})")
-                    result["failed"] += 1
-                destination = _destination(root, destination_kind, folder.name, digest)
-                os.replace(source, destination / source.name)
-                _write_json(destination / "receipt.json", receipt)
-                result["files"] += 1
+            outcome: dict[str, object] = {"imported": 0, "duplicates": 0, "failed": 0, "files": 0, "skipped": 0}
+            folder_outcomes[folder.name] = outcome
+            try:
+                _inside(folder, root)
+                _private(folder, "folder")
+                chat_id, name = _metadata(folder)
+                if expected_folders.get(folder.name) != (chat_id, name):
+                    raise ValueError("folder metadata does not match manifest")
+                if chat_id in ids:
+                    raise ValueError("duplicate chat_id in drop root")
+                ids.add(chat_id)
+                sources: list[Path] = []
+                for entry in sorted(folder.iterdir(), key=lambda item: item.name):
+                    _inside(entry, root)
+                    if entry.name == METADATA:
+                        continue
+                    if entry.is_symlink():
+                        raise ValueError("source must not be a symlink")
+                    if entry.suffix.lower() not in {".zip", ".txt"}:
+                        outcome["skipped"] += 1
+                        continue
+                    _private(entry, "source")
+                    if time.time() - entry.stat().st_mtime < QUIET_SECONDS:
+                        outcome["skipped"] += 1
+                        continue
+                    sources.append(entry)
+                for source in sources:
+                    with source.open("rb") as handle:
+                        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+                    before = _message_count(config.archive.path, chat_id)
+                    receipt: dict[str, object] = {
+                        "filename": source.name, "sha256": digest, "chat_id": chat_id,
+                        "chat_name": name, "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                    destination_kind = "Processed"
+                    try:
+                        payload = import_whatsapp(config, source, chat_id, name, "day-first")
+                        after = _message_count(config.archive.path, chat_id)
+                        imported = max(0, after - before)
+                        duplicates = max(0, int(payload["message_count"]) - imported)
+                        receipt.update(imported_count=imported, duplicate_count=duplicates)
+                        result["imported"] += imported
+                        result["duplicates"] += duplicates
+                        outcome["imported"] += imported
+                        outcome["duplicates"] += duplicates
+                    except Exception as exc:
+                        destination_kind = "Failed"
+                        receipt.update(imported_count=0, duplicate_count=0,
+                                       error=f"import failed ({type(exc).__name__})")
+                        result["failed"] += 1
+                        outcome["failed"] += 1
+                    destination = _destination(root, destination_kind, folder.name, digest)
+                    _move(source, destination / source.name)
+                    _write_json(destination / "receipt.json", receipt)
+                    result["files"] += 1
+                    outcome["files"] += 1
+            except Exception as exc:
+                outcome["error"] = f"folder refused ({type(exc).__name__})"
     return result
 
 
@@ -166,24 +216,8 @@ def setup(root: Path, manifest: Path) -> int:
         _private(root, "root")
     else:
         _mkdir(root)
-    manifest = manifest.expanduser()
-    _private(manifest, "manifest")
-    seen_ids: set[str] = set()
-    seen_folders: set[str] = set()
-    with manifest.open(newline="", encoding="utf-8-sig") as handle:
-        rows = csv.DictReader(handle, delimiter="\t")
-        if rows.fieldnames != ["folder", "chat_id", "name"]:
-            raise ValueError("manifest header must be: folder<TAB>chat_id<TAB>name")
-        entries = list(rows)
-    for row in entries:
-        folder_name, chat_id, name = (row[key].strip() for key in ("folder", "chat_id", "name"))
-        if (not folder_name or folder_name in RESERVED or folder_name in {".", ".."} or "/" in folder_name
-                or "\0" in folder_name or not chat_id or not name):
-            raise ValueError("manifest contains an invalid value")
-        if chat_id in seen_ids or folder_name in seen_folders:
-            raise ValueError("manifest contains a duplicate folder or chat_id")
-        seen_ids.add(chat_id)
-        seen_folders.add(folder_name)
+    entries = _read_manifest(manifest)
+    for folder_name, (chat_id, name) in entries.items():
         folder = root / folder_name
         if folder.exists():
             _private(folder, "folder")
@@ -197,7 +231,7 @@ def setup(root: Path, manifest: Path) -> int:
     return len(entries)
 
 
-def install_launchd(root: Path, config_path: Path, script: Path) -> Path:
+def install_launchd(root: Path, config_path: Path, manifest: Path, script: Path) -> Path:
     state = Path.home() / ".local" / "state" / "beeper-bot"
     _mkdir(state)
     log = state / "whatsapp-export-dropbox.log"
@@ -205,12 +239,12 @@ def install_launchd(root: Path, config_path: Path, script: Path) -> Path:
     os.close(fd)
     os.chmod(log, 0o600)
     agents = Path.home() / "Library" / "LaunchAgents"
-    _mkdir(agents)
+    agents.mkdir(parents=True, exist_ok=True)
     plist = agents / "com.exceptionalspirits.whatsapp-export-dropbox.plist"
     payload = {
         "Label": "com.exceptionalspirits.whatsapp-export-dropbox",
         "ProgramArguments": [sys.executable, str(script.resolve()), "scan", "--root", str(root.expanduser()),
-                             "--config", str(config_path.expanduser())],
+                             "--config", str(config_path.expanduser()), "--manifest", str(manifest.expanduser())],
         "StartInterval": 60, "RunAtLoad": True,
         "StandardOutPath": str(log), "StandardErrorPath": str(log), "ProcessType": "Background",
     }
@@ -228,20 +262,22 @@ def main(argv: list[str] | None = None) -> int:
     scan_parser = sub.add_parser("scan")
     scan_parser.add_argument("--root", type=Path, default=Path.home() / "WhatsApp Exports")
     scan_parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    scan_parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST_PATH)
     setup_parser = sub.add_parser("setup")
     setup_parser.add_argument("manifest", type=Path)
     setup_parser.add_argument("--root", type=Path, default=Path.home() / "WhatsApp Exports")
     install = sub.add_parser("install-launchd")
     install.add_argument("--root", type=Path, default=Path.home() / "WhatsApp Exports")
     install.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
+    install.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST_PATH)
     args = parser.parse_args(argv)
     try:
         if args.command == "scan":
-            print(json.dumps(scan(args.root, args.config), sort_keys=True))
+            print(json.dumps(scan(args.root, args.config, args.manifest), sort_keys=True))
         elif args.command == "setup":
             print(f"created or verified {setup(args.root, args.manifest)} chat folders")
         else:
-            print(install_launchd(args.root, args.config, Path(__file__)))
+            print(install_launchd(args.root, args.config, args.manifest, Path(__file__)))
         return 0
     except Exception as exc:
         print(f"whatsapp export dropbox: {type(exc).__name__}: operation refused", file=sys.stderr)

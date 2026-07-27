@@ -118,19 +118,26 @@ to an owner-only log. An `fcntl` lock permits only one scanner process; the
 kernel releases it after crashes, so no stale lock cleanup is needed.
 
 ```sh
-PYTHONPATH="$PWD/src" .venv/bin/python scripts/whatsapp_export_dropbox.py install-launchd
+PYTHONPATH="$PWD/src" .venv/bin/python scripts/whatsapp_export_dropbox.py install-launchd \
+  --manifest ~/.config/beeper-bot/whatsapp-export-chats.tsv
 launchctl bootout "gui/$(id -u)" ~/Library/LaunchAgents/com.exceptionalspirits.whatsapp-export-dropbox.plist 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.exceptionalspirits.whatsapp-export-dropbox.plist
 launchctl kickstart -k "gui/$(id -u)/com.exceptionalspirits.whatsapp-export-dropbox"
 ```
 
-Place an owner-only `.zip` or `.txt` in the matching chat folder. Successful
-files move atomically within the root to `Processed/<folder>/<sha256>/`; failed
+Place an owner-only `.zip` or `.txt` in the matching chat folder. Files less
+than 30 seconds old are left for the next scan so Finder can finish writing
+them. Successful
+files move within the root to `Processed/<folder>/<sha256>/`; failed
 files move to `Failed/<folder>/<sha256>/`. Each destination contains a `0600`
 JSON receipt with filename, SHA-256, chat ID/name, timestamp, and imported and
 duplicate counts (or only a sanitized exception class on failure), never
-message text. The scanner refuses symlinks, duplicate IDs, extra metadata
-keys/files, paths escaping the root, and any root/chat/source/metadata item
+message text. Every scan rechecks each folder against the private manifest and
+reports sanitized per-folder outcomes; one refused folder does not block later
+folders, and unrelated files such as `.DS_Store` are ignored. The scanner
+refuses
+symlinks, duplicate IDs, extra metadata keys, paths escaping the root, and any
+root/chat/source/metadata item
 with group or other permissions. Re-copying an already imported export is
 safe: the reviewed importer's message fingerprints keep the archive
 idempotent, and the receipt reports the rows as duplicates.
@@ -138,7 +145,8 @@ idempotent, and the receipt reports the rows as duplicates.
 Manual check, with no Beeper API contact:
 
 ```sh
-PYTHONPATH="$PWD/src" .venv/bin/python scripts/whatsapp_export_dropbox.py scan
+PYTHONPATH="$PWD/src" .venv/bin/python scripts/whatsapp_export_dropbox.py scan \
+  --manifest ~/.config/beeper-bot/whatsapp-export-chats.tsv
 find ~/WhatsApp\ Exports/Processed ~/WhatsApp\ Exports/Failed -name receipt.json -type f -print
 ```
 
