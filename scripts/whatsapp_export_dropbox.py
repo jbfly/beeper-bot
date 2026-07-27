@@ -142,6 +142,7 @@ def scan(root: Path, config_path: Path, manifest: Path = DEFAULT_MANIFEST_PATH) 
     lock_path = config.archive.path.parent / "whatsapp-export-dropbox.lock"
     folder_outcomes: dict[str, dict[str, object]] = {}
     result: dict[str, object] = {"imported": 0, "duplicates": 0, "failed": 0, "files": 0,
+                                 "media_extracted": 0, "media_skipped_video": 0, "media_failed": 0,
                                  "folders": folder_outcomes}
     with _lock(lock_path):
         ids: set[str] = set()
@@ -149,7 +150,8 @@ def scan(root: Path, config_path: Path, manifest: Path = DEFAULT_MANIFEST_PATH) 
             if folder.name in RESERVED:
                 _private(folder, "folder")
                 continue
-            outcome: dict[str, object] = {"imported": 0, "duplicates": 0, "failed": 0, "files": 0, "skipped": 0}
+            outcome: dict[str, object] = {"imported": 0, "duplicates": 0, "failed": 0, "files": 0, "skipped": 0,
+                                          "media_extracted": 0, "media_skipped_video": 0, "media_failed": 0}
             folder_outcomes[folder.name] = outcome
             try:
                 _inside(folder, root)
@@ -185,18 +187,25 @@ def scan(root: Path, config_path: Path, manifest: Path = DEFAULT_MANIFEST_PATH) 
                     }
                     destination_kind = "Processed"
                     try:
-                        payload = import_whatsapp(config, source, chat_id, name, "day-first")
+                        payload = import_whatsapp(config, source, chat_id, name, "day-first", extract_media=True,
+                                                  forbidden_media_root=root)
                         after = _message_count(config.archive.path, chat_id)
                         imported = max(0, after - before)
                         duplicates = max(0, int(payload["message_count"]) - imported)
-                        receipt.update(imported_count=imported, duplicate_count=duplicates)
+                        media_counts = {key: int(payload[key]) for key in
+                                        ("media_extracted", "media_skipped_video", "media_failed")}
+                        receipt.update(imported_count=imported, duplicate_count=duplicates, **media_counts)
                         result["imported"] += imported
                         result["duplicates"] += duplicates
                         outcome["imported"] += imported
                         outcome["duplicates"] += duplicates
+                        for key, count in media_counts.items():
+                            result[key] += count
+                            outcome[key] += count
                     except Exception as exc:
                         destination_kind = "Failed"
-                        receipt.update(imported_count=0, duplicate_count=0,
+                        receipt.update(imported_count=0, duplicate_count=0, media_extracted=0,
+                                       media_skipped_video=0, media_failed=0,
                                        error=f"import failed ({type(exc).__name__})")
                         result["failed"] += 1
                         outcome["failed"] += 1

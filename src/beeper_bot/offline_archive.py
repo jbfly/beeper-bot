@@ -3,11 +3,15 @@ from __future__ import annotations
 import calendar
 import hashlib
 import json
+import os
 import re
+import stat
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 from .config import AppConfig, ConfigError
 from .db import init_db_path, open_db, utc_now
@@ -18,6 +22,7 @@ MAX_INPUT_BYTES = 32 * 1024 * 1024
 MAX_ZIP_BYTES = 64 * 1024 * 1024
 MAX_ZIP_EXPANDED_BYTES = 1024 * 1024 * 1024
 MAX_ZIP_MEMBERS = 256
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".3gp"}
 MESSAGE_RE = re.compile(
     r"^(?:\[)?(?P<date>\d{1,2}/\d{1,2}/\d{2,4}),?\s+(?P<time>\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)(?:\])?\s*(?:-|–)\s*(?P<body>.*)$",
     re.IGNORECASE,
@@ -139,7 +144,85 @@ def list_approved_chats(config: AppConfig) -> list[dict[str, object]]:
     return [dict(row) for row in rows]
 
 
-def _read_export(path: Path) -> tuple[str, str, str]:
+def _private_media_dir(path: Path) -> None:
+    if path.exists() or path.is_symlink():
+        mode = path.lstat().st_mode
+        if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            raise OSError("media path is not a directory")
+    else:
+        path.mkdir(mode=0o700)
+    os.chmod(path, 0o700)
+
+
+def _sha256_file(path: Path) -> str:
+    with path.open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def _write_media_member(archive: zipfile.ZipFile, member: zipfile.ZipInfo, media_dir: Path) -> bool:
+    name = PurePosixPath(member.filename).name
+    if name in {"", ".", ".."}:
+        raise OSError("invalid media filename")
+    fd, temporary_name = tempfile.mkstemp(prefix=".whatsapp-", dir=media_dir)
+    temporary = Path(temporary_name)
+    try:
+        digest = hashlib.sha256()
+        with os.fdopen(fd, "wb") as destination, archive.open(member) as source:
+            os.chmod(temporary, 0o600)
+            while chunk := source.read(1024 * 1024):
+                destination.write(chunk)
+                digest.update(chunk)
+        hexdigest = digest.hexdigest()
+        target = media_dir / name
+        collision = 0
+        while True:
+            candidate = target if collision == 0 else target.with_name(
+                f"{target.stem}-{hexdigest[:12]}{f'-{collision}' if collision > 1 else ''}{target.suffix}"
+            )
+            if candidate.exists() or candidate.is_symlink():
+                mode = candidate.lstat().st_mode
+                if stat.S_ISREG(mode) and _sha256_file(candidate) == hexdigest:
+                    return False
+                collision += 1
+                continue
+            try:
+                os.link(temporary, candidate)
+            except FileExistsError:
+                collision += 1
+                continue
+            os.chmod(candidate, 0o600)
+            return True
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _extract_media(archive: zipfile.ZipFile, members: list[zipfile.ZipInfo], text_member: zipfile.ZipInfo,
+                   media_dir: Path, forbidden_root: Path | None) -> tuple[int, int, int]:
+    eligible = [member for member in members if not member.is_dir() and member != text_member]
+    videos = [member for member in eligible if PurePosixPath(member.filename).suffix.casefold() in VIDEO_EXTENSIONS]
+    retained = [member for member in eligible if member not in videos]
+    try:
+        root = media_dir.parent
+        resolved_root = root.resolve()
+        if forbidden_root is not None and resolved_root.is_relative_to(forbidden_root.resolve()):
+            raise OSError("media path is inside the drop folder")
+        if any((parent / ".git").exists() for parent in (resolved_root, *resolved_root.parents)):
+            raise OSError("media path is inside a git repository")
+        _private_media_dir(root)
+        _private_media_dir(media_dir)
+    except Exception:
+        return 0, len(videos), len(retained)
+    extracted = failed = 0
+    for member in retained:
+        try:
+            extracted += int(_write_media_member(archive, member, media_dir))
+        except Exception:
+            failed += 1
+    return extracted, len(videos), failed
+
+
+def _read_export(path: Path, *, extract_media: bool = False, media_dir: Path | None = None,
+                 forbidden_media_root: Path | None = None) -> tuple[str, str, str, int, int, int]:
     path = path.expanduser().resolve(strict=True)
     if not path.is_file():
         raise ConfigError(f"import path is not a regular file: {path}")
@@ -147,6 +230,7 @@ def _read_export(path: Path) -> tuple[str, str, str]:
     if size > MAX_ZIP_BYTES:
         raise ConfigError(f"import file is too large: {size} bytes")
     artifact_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    media_extracted = media_skipped_video = media_failed = 0
     if path.suffix.casefold() == ".txt":
         if size > MAX_INPUT_BYTES:
             raise ConfigError(f"text export is too large: {size} bytes")
@@ -182,12 +266,17 @@ def _read_export(path: Path) -> tuple[str, str, str]:
                     raise ConfigError("ZIP must contain exactly one chat .txt file")
                 member = text_members[0]
                 data, source_name = archive.read(member), PurePosixPath(member.filename).name
+                if extract_media and media_dir is not None:
+                    media_extracted, media_skipped_video, media_failed = _extract_media(
+                        archive, members, member, media_dir, forbidden_media_root
+                    )
         except zipfile.BadZipFile as exc:
             raise ConfigError("invalid ZIP export") from exc
     else:
         raise ConfigError("import path must end in .txt or .zip")
     try:
-        return data.decode("utf-8-sig"), source_name, artifact_sha256
+        return (data.decode("utf-8-sig"), source_name, artifact_sha256,
+                media_extracted, media_skipped_video, media_failed)
     except UnicodeDecodeError as exc:
         raise ConfigError("chat export must be UTF-8 text") from exc
 
@@ -242,7 +331,9 @@ def parse_whatsapp_export(text: str, date_order: str = "auto") -> list[ImportedM
             current.text += "\n" + line
     return [message for message in messages if message.text.strip()]
 
-def import_whatsapp(config: AppConfig, path: Path, chat_id: str, name: str | None = None, date_order: str = "auto") -> dict[str, object]:
+def import_whatsapp(config: AppConfig, path: Path, chat_id: str, name: str | None = None,
+                    date_order: str = "auto", *, extract_media: bool = False,
+                    forbidden_media_root: Path | None = None) -> dict[str, object]:
     init_db_path(config.archive.path)
     chat_id = chat_id.strip()
     with open_db(config.archive.path) as conn:
@@ -250,7 +341,15 @@ def import_whatsapp(config: AppConfig, path: Path, chat_id: str, name: str | Non
     if chat is None or int(chat["is_allowed"]) != 1:
         raise ConfigError("chat is not approved; approve this stable chat_id before importing")
 
-    text, source_name, artifact_sha256 = _read_export(path)
+    chat_label = quote(chat_id, safe=":@+.,=_-")
+    if chat_label in {"", ".", ".."}:
+        chat_label = f"chat-{chat_label or 'unnamed'}"
+    if len(chat_label.encode()) > 180:
+        chat_label = f"{chat_label[:160]}-{hashlib.sha256(chat_id.encode()).hexdigest()[:12]}"
+    text, source_name, artifact_sha256, media_extracted, media_skipped_video, media_failed = _read_export(
+        path, extract_media=extract_media, media_dir=config.archive.path.parent / "media" / chat_label,
+        forbidden_media_root=forbidden_media_root,
+    )
     parsed = parse_whatsapp_export(text, date_order=date_order)
     if not parsed:
         raise ConfigError("no WhatsApp messages found in export")
@@ -302,7 +401,9 @@ def import_whatsapp(config: AppConfig, path: Path, chat_id: str, name: str | Non
                          (message_id, chat_id, display_name, message.sender_name, message.text))
         conn.commit()
     return {"chat_id": chat_id, "chat_name": display_name, "source": source_name,
-            "source_artifact_sha256": artifact_sha256, "message_count": len(parsed)}
+            "source_artifact_sha256": artifact_sha256, "message_count": len(parsed),
+            "media_extracted": media_extracted, "media_skipped_video": media_skipped_video,
+            "media_failed": media_failed}
 
 
 def scoped_search(config: AppConfig, chat_id: str, query: str, limit: int = 20) -> list[dict[str, object]]:

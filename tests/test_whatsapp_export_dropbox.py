@@ -9,6 +9,7 @@ import stat
 import tempfile
 import time
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -56,13 +57,38 @@ class WhatsAppExportDropboxTest(unittest.TestCase):
             self.assertEqual({key: result[key] for key in ("imported", "duplicates", "failed", "files")},
                              {"imported": 2, "duplicates": 0, "failed": 0, "files": 1})
             self.assertEqual(result["folders"]["Synthetic Chat"],
-                             {"imported": 2, "duplicates": 0, "failed": 0, "files": 1, "skipped": 0})
+                             {"imported": 2, "duplicates": 0, "failed": 0, "files": 1, "skipped": 0,
+                              "media_extracted": 0, "media_skipped_video": 0, "media_failed": 0})
             self.assertFalse(source.exists())
             receipt_path = next((root / "Processed").rglob("receipt.json"))
             receipt = json.loads(receipt_path.read_text())
             self.assertEqual((receipt["chat_id"], receipt["chat_name"], receipt["filename"]),
                              ("wa:synthetic", "Synthetic Chat", "chat export.txt"))
             self.assertNotIn("Synthetic alpha", receipt_path.read_text())
+
+    def test_zip_media_is_retained_outside_drop_folder_and_counted_in_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root, config, manifest, folder = self._paths(temporary)
+            source = folder / "export.zip"
+            with zipfile.ZipFile(source, "w") as archive:
+                archive.writestr("chat.txt", "[27/07/26, 09:00] Person One: <attached: photo.jpg>\n")
+                archive.writestr("photo.jpg", b"image")
+                archive.writestr("report.pdf", b"document")
+                archive.writestr("clip.3gp", b"video")
+            os.chmod(source, 0o600)
+            old = time.time() - DROPBOX.QUIET_SECONDS - 1
+            os.utime(source, (old, old))
+            result = DROPBOX.scan(root, config, manifest)
+            self.assertEqual((result["media_extracted"], result["media_skipped_video"], result["media_failed"]),
+                             (2, 1, 0))
+            receipt_path = next((root / "Processed").rglob("receipt.json"))
+            receipt = json.loads(receipt_path.read_text())
+            self.assertEqual((receipt["media_extracted"], receipt["media_skipped_video"], receipt["media_failed"]),
+                             (2, 1, 0))
+            self.assertNotIn("Person One", receipt_path.read_text())
+            media_dir = Path(temporary) / "state" / "media" / "wa:synthetic"
+            self.assertEqual({path.name for path in media_dir.iterdir()}, {"photo.jpg", "report.pdf"})
+            self.assertFalse(media_dir.resolve().is_relative_to(root.resolve()))
 
     def test_unknown_finder_file_does_not_block_valid_export(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
